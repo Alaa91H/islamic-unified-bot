@@ -1,0 +1,114 @@
+name: 🤖 Dependabot Auto-merge
+
+# ============================================================
+# Automatically merges Dependabot PRs once all required CI
+# checks pass.  Strategy:
+#   • patch  → approve + auto-merge immediately
+#   • minor  → approve + auto-merge immediately
+#   • major  → leave open, add label + comment for manual review
+#
+# Prerequisites (set once in repo Settings):
+#   • Settings → General → "Allow auto-merge" must be ON
+#   • Settings → Branches → branch-protection rule on `main`
+#     must require status checks so auto-merge waits for CI
+# ============================================================
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+
+  # ----------------------------------------------------------
+  # 1. Fetch Dependabot metadata
+  # ----------------------------------------------------------
+  metadata:
+    name: 📋 Fetch PR metadata
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    outputs:
+      update-type: ${{ steps.meta.outputs.update-type }}
+      dependency-names: ${{ steps.meta.outputs.dependency-names }}
+      package-ecosystem: ${{ steps.meta.outputs.package-ecosystem }}
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----------------------------------------------------------
+  # 2. Auto-approve + enable auto-merge (patch / minor)
+  # ----------------------------------------------------------
+  auto-merge:
+    name: ✅ Approve & enable auto-merge
+    runs-on: ubuntu-latest
+    needs: metadata
+    if: |
+      github.actor == 'dependabot[bot]' &&
+      (
+        needs.metadata.outputs.update-type == 'version-update:semver-patch' ||
+        needs.metadata.outputs.update-type == 'version-update:semver-minor'
+      )
+    steps:
+      - name: Approve PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge (squash)
+        # Squash keeps the commit graph clean.
+        # Auto-merge fires only after all required checks pass.
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add summary comment
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "🤖 **Auto-merge enabled** for this \`${{ needs.metadata.outputs.update-type }}\` update to \`${{ needs.metadata.outputs.dependency-names }}\` (\`${{ needs.metadata.outputs.package-ecosystem }}\`).
+            
+            Merge will proceed automatically once all required CI checks pass. ✅"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----------------------------------------------------------
+  # 3. Flag major updates for manual review
+  # ----------------------------------------------------------
+  flag-major:
+    name: ⚠️ Flag major update
+    runs-on: ubuntu-latest
+    needs: metadata
+    if: |
+      github.actor == 'dependabot[bot]' &&
+      needs.metadata.outputs.update-type == 'version-update:semver-major'
+    steps:
+      - name: Add "needs-review" label
+        run: gh pr edit "$PR_URL" --add-label "needs-review"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true   # label might not exist yet
+
+      - name: Post review-required comment
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "⚠️ **Major version update** detected for \`${{ needs.metadata.outputs.dependency-names }}\`.
+            
+            This PR will **not** be auto-merged because major bumps may contain breaking changes.
+            
+            **Before merging, please:**
+            - [ ] Review the changelog / release notes
+            - [ ] Check for breaking API changes against the codebase
+            - [ ] Run integration tests locally if needed
+            - [ ] Manually approve and merge once satisfied"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
