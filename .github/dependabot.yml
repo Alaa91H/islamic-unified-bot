@@ -1,0 +1,117 @@
+# ============================================================
+# Dependabot — Automated Dependency Updates
+# Keeps all ecosystems up-to-date with security patches,
+# minor improvements, and controlled major-version upgrades.
+# ============================================================
+version: 2
+
+updates:
+
+  # ----------------------------------------------------------
+  # 1. Python / pip
+  # ----------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Riyadh"
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+      - "automerge"
+    reviewers:
+      - "Alaa91H"
+    assignees:
+      - "Alaa91H"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    # Group all non-major pip bumps into a single weekly PR
+    # to reduce noise (minor + patch land together).
+    groups:
+      python-non-major:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      python-dev-non-major:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Pyrogram major: API breaks are common across majors.
+      - dependency-name: "Pyrogram"
+        update-types: ["version-update:semver-major"]
+      # pytgcalls major: voice-call internals change significantly.
+      - dependency-name: "pytgcalls"
+        update-types: ["version-update:semver-major"]
+      # SQLAlchemy major: ORM migrations are manual work.
+      - dependency-name: "sqlalchemy"
+        update-types: ["version-update:semver-major"]
+
+  # ----------------------------------------------------------
+  # 2. GitHub Actions
+  # ----------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Riyadh"
+    target-branch: "main"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automerge"
+    reviewers:
+      - "Alaa91H"
+    assignees:
+      - "Alaa91H"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    # Group all Actions updates (they're almost always safe).
+    groups:
+      github-actions-all:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+
+  # ----------------------------------------------------------
+  # 3. Docker
+  # ----------------------------------------------------------
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "Asia/Riyadh"
+    target-branch: "main"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automerge"
+    reviewers:
+      - "Alaa91H"
+    assignees:
+      - "Alaa91H"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    ignore:
+      # Only auto-update patch-level base image digests;
+      # minor/major base image bumps warrant a manual check.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]
