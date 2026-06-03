@@ -1,6 +1,6 @@
 pyrogram==2.0.106
 # TgCrypto==1.2.5 (Skip for 3.12 compatibility if build fails)
-py-tgcalls==2.1.1
+py-tgcalls==2.2.12
 python-dotenv==1.2.2
 aiofiles==25.1.0
 aiohttp==3.14.0
