@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly update timer for Islamic Unified Bot
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=3600
+
+[Install]
+WantedBy=timers.target

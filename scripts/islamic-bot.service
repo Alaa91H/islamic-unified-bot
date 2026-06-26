@@ -1,0 +1,27 @@
+[Unit]
+Description=Islamic Unified Bot - Pyrogram Telegram Bot
+After=network.target
+Wants=islamic-bot-update.timer
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/islamic-unified-bot
+ExecStart=/opt/islamic-unified-bot/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+RestartSteps=3
+RestartMaxDelaySec=30
+
+# حماية الذاكرة
+MemoryMax=700M
+MemoryHigh=600M
+OOMScoreAdjust=-100
+
+# استقرار الخدمة
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

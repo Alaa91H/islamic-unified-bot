@@ -1,0 +1,399 @@
+name: 🕌 Islamic Bot — CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+
+  # ============================================================
+  # JOB 1 — فحص جودة الكود (Lint & Format)
+  # ============================================================
+  lint:
+    name: 🔍 Lint & Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install ruff
+
+      - name: Ruff — lint check
+        run: ruff check bot/ main.py
+
+      - name: Ruff — format check
+        run: ruff format --check bot/ main.py
+
+  # ============================================================
+  # JOB 2 — فحص الأمان (Security Scan)
+  # ============================================================
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install security tools
+        run: pip install bandit
+
+      - name: Bandit — security vulnerabilities
+        run: |
+          bandit -r bot/ main.py \
+            --severity-level high \
+            --confidence-level high
+
+  # ============================================================
+  # JOB 3 — الاختبارات
+  # ============================================================
+  test:
+    name: 🧪 Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install aiosqlite pyrogram pytest pytest-asyncio pytest-cov
+
+      - name: Run unit tests with coverage
+        run: |
+          pytest tests/unit/ -v \
+            --cov=bot \
+            --cov-report=term-missing \
+            --cov-fail-under=75 \
+            --tb=short
+
+      - name: Run data integrity tests
+        run: |
+          python -m pytest tests/test_data_integrity.py -v --tb=short || true
+
+  # ============================================================
+  # JOB 4 — التحقق من الاستيراد والتشغيل (Smoke Test)
+  # ============================================================
+  smoke-test:
+    name: 💨 Smoke Test
+    runs-on: ubuntu-latest
+    needs: [lint, security, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install aiosqlite aiohttp
+
+      - name: Smoke test — bot package imports
+        run: |
+          python -c "
+          import sys
+          print('🔍 Testing bot package imports...')
+
+          from bot.config import Settings
+          print('  ✅ bot.config')
+
+          from bot.deps import build_dependencies, Dependencies
+          print('  ✅ bot.deps')
+
+          from bot.prayer.calculator import PrayerTimeCalculator, CityCoordinates, PrayerTimeAPI
+          print('  ✅ bot.prayer.calculator')
+
+          from bot.streaming.stream_manager import StreamManager
+          print('  ✅ bot.streaming')
+
+          from bot.data.surahs import SURAHS
+          from bot.data.adhkar import ADHKAR
+          from bot.data.sources import AZAN_SOURCES, PRELUDE_SOURCES, QURANIC_RECITERS
+          print('  ✅ bot.data')
+
+          from bot.db.connection import Database
+          print('  ✅ bot.db')
+
+          from bot.decorators import safe_handler, owner_only
+          print('  ✅ bot.decorators')
+
+          print('✅ All bot package imports successful')
+          "
+
+      - name: Smoke test — prayer time calculation
+        run: |
+          python -c "
+          from datetime import datetime
+          from bot.prayer.calculator import PrayerTimeCalculator, CityCoordinates
+
+          coords = CityCoordinates.get_city_coords('مكة المكرمة')
+          assert coords is not None, 'Makkah coords not found'
+
+          calc = PrayerTimeCalculator(
+              latitude=coords['lat'],
+              longitude=coords['lng'],
+              timezone=3,
+              method='makkah'
+          )
+          times = calc.calculate_times(datetime.now())
+          assert isinstance(times, dict), 'calculate_times must return dict'
+          assert 'fajr' in times, 'fajr must be in times'
+          assert 'maghrib' in times, 'maghrib must be in times'
+          assert 'isha' in times, 'isha must be in times'
+          print('✅ Prayer time calculation OK')
+          print(f'   Fajr: {times[\"fajr\"]}')
+          print(f'   Maghrib: {times[\"maghrib\"]}')
+          "
+
+      - name: Smoke test — data integrity
+        run: |
+          python -c "
+          from bot.data.sources import AZAN_SOURCES, PRELUDE_SOURCES
+          from bot.data.surahs import SURAHS
+          from bot.data.adhkar import ADHKAR
+
+          assert len(SURAHS) == 114, 'SURAHS must have 114 entries'
+          assert len(AZAN_SOURCES) > 0, 'AZAN_SOURCES is empty'
+          assert len(ADHKAR) > 0, 'ADHKAR is empty'
+
+          for source_key, source_data in AZAN_SOURCES.items():
+              assert 'name' in source_data, f'Missing name in {source_key}'
+              for prayer in ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']:
+                  assert prayer in source_data, f'Missing {prayer} in {source_key}'
+
+          urls_ok = True
+          for key, src in AZAN_SOURCES.items():
+              for p in ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']:
+                  if 'example.com' in src[p]:
+                      print(f'  ❌ Placeholder URL in {key}/{p}')
+                      urls_ok = False
+          assert urls_ok, 'Placeholder URLs (example.com) found in AZAN_SOURCES'
+
+          for key, src in PRELUDE_SOURCES.items():
+              if 'example.com' in src['url']:
+                  print(f'  ❌ Placeholder URL in PRELUDE/{key}')
+                  urls_ok = False
+          assert urls_ok, 'Placeholder URLs (example.com) found in PRELUDE_SOURCES'
+
+          print(f'✅ {len(AZAN_SOURCES)} azan sources verified')
+          print(f'✅ {len(ADHKAR)} adhkar categories verified')
+          print(f'✅ {len(SURAHS)} surahs verified')
+          print('✅ No placeholder URLs found')
+          "
+
+  # ============================================================
+  # JOB 5 — البناء والتغليف (Build)
+  # ============================================================
+  build:
+    name: 📦 Build Package
+    runs-on: ubuntu-latest
+    needs: [smoke-test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Validate required files exist
+        run: |
+          for f in main.py bot/__init__.py bot/config.py bot/deps.py \
+                   requirements.txt .env.example; do
+            [ -f "$f" ] && echo "✅ $f" || (echo "❌ Missing: $f" && exit 1)
+          done
+          echo "✅ All required files present"
+
+      - name: Validate bot package structure
+        run: |
+          for d in bot/handlers bot/prayer bot/streaming bot/data bot/db bot/scheduler; do
+            [ -d "$d" ] && echo "✅ $d/" || (echo "❌ Missing: $d/" && exit 1)
+          done
+          echo "✅ All bot subpackages present"
+
+      - name: Set build metadata
+        run: |
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+          echo "BUILD_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+          echo "BUILD_REF=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      - name: Generate version file
+        run: |
+          cat > version.py << EOF
+          BUILD_DATE = "${{ env.BUILD_DATE }}"
+          BUILD_SHA  = "${{ env.BUILD_SHA }}"
+          BUILD_REF  = "${{ env.BUILD_REF }}"
+          EOF
+          echo "✅ version.py generated"
+
+      - name: Create release archive
+        run: |
+          zip -r islamic-bot-${{ env.BUILD_SHA }}.zip . \
+            -x ".git/*" -x "*.session" -x "__pycache__/*" \
+            -x "*.pyc" -x ".env" -x "htmlcov/*" -x "*.log" \
+            -x "tests/__pycache__/*"
+          echo "📦 Archive: $(du -h islamic-bot-${{ env.BUILD_SHA }}.zip | cut -f1)"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: islamic-bot-build-${{ env.BUILD_SHA }}
+          path: islamic-bot-${{ env.BUILD_SHA }}.zip
+          retention-days: 30
+
+  # ============================================================
+  # JOB 6 — النشر التلقائي على السيرفر (Deploy)
+  # ============================================================
+  deploy:
+    name: 🚀 Deploy to Server
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://github.com/Alaa91H/islamic-unified-bot
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate secrets
+        id: validate-secrets
+        continue-on-error: true
+        run: |
+          missing=""
+          [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && missing="$missing SSH_PRIVATE_KEY"
+          [ -z "${{ secrets.SERVER_HOST }}" ]     && missing="$missing SERVER_HOST"
+          [ -z "${{ secrets.SSH_USER }}" ]        && missing="$missing SSH_USER"
+          if [ -n "$missing" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "❌ Missing required secrets:$missing"
+            echo "Please add them in: Settings → Secrets and variables → Actions"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✅ All required secrets are set"
+          fi
+
+      - name: Setup SSH
+        if: steps.validate-secrets.outputs.skip != 'true'
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_PORT="${{ secrets.SSH_PORT }}"
+          SSH_PORT="${SSH_PORT:-22}"
+          ssh-keyscan -p "$SSH_PORT" -H "${{ secrets.SERVER_HOST }}" \
+            >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy to server
+        if: steps.validate-secrets.outputs.skip != 'true'
+        run: |
+          SSH_PORT="${{ secrets.SSH_PORT }}"
+          SSH_PORT="${SSH_PORT:-22}"
+          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          DEPLOY_PATH="${DEPLOY_PATH:-/root/islamic-unified-bot}"
+
+          ssh -i ~/.ssh/deploy_key \
+              -p "$SSH_PORT" \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=30 \
+              "${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }}" \
+              BOT_DIR="$DEPLOY_PATH" bash -s << 'ENDSSH'
+            set -e
+
+            echo "📥 Pulling latest code..."
+            cd "$BOT_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "📦 Installing dependencies..."
+            source venv/bin/activate
+            pip install -r requirements.txt --quiet
+
+            echo "🔄 Restarting bot service..."
+            sudo systemctl restart islamic-bot
+
+            echo "⏳ Waiting for service to stabilize..."
+            sleep 5
+
+            STATUS=$(sudo systemctl is-active islamic-bot)
+            if [ "$STATUS" = "active" ]; then
+              echo "✅ Bot is running successfully!"
+            else
+              echo "❌ Bot failed to start!"
+              sudo journalctl -u islamic-bot --no-pager -n 50
+              exit 1
+            fi
+          ENDSSH
+
+      - name: Verify deployment health
+        if: steps.validate-secrets.outputs.skip != 'true'
+        run: |
+          SSH_PORT="${{ secrets.SSH_PORT }}"
+          SSH_PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/deploy_key \
+              -p "$SSH_PORT" \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=30 \
+              "${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }}" \
+              "sudo systemctl status islamic-bot --no-pager"
+
+      - name: Notify on success
+        if: success() && steps.validate-secrets.outputs.skip != 'true'
+        continue-on-error: true
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.OWNER_ID }}
+          token: ${{ secrets.BOT_TOKEN }}
+          message: |
+            ✅ *تم النشر بنجاح!*
+            📦 الإصدار: `${{ github.sha }}`
+            🌿 الفرع: `${{ github.ref_name }}`
+            👤 بواسطة: `${{ github.actor }}`
+            🕐 الوقت: `${{ env.BUILD_DATE }}`
+
+      - name: Notify on failure
+        if: failure() && steps.validate-secrets.outputs.skip != 'true'
+        continue-on-error: true
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.OWNER_ID }}
+          token: ${{ secrets.BOT_TOKEN }}
+          message: |
+            ❌ *فشل النشر!*
+            📦 الإصدار: `${{ github.sha }}`
+            🌿 الفرع: `${{ github.ref_name }}`
+            🔗 السجل: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

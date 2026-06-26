@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly update for Islamic Unified Bot
+
+[Service]
+Type=oneshot
+ExecStart=/opt/islamic-unified-bot/scripts/weekly-update.sh
+User=root
