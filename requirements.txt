@@ -3,11 +3,11 @@ pyrogram==2.0.106
 # py-tgcalls==2.1.1 (اختياري — للبث الصوتي في المجموعات)
 python-dotenv==1.2.2
 aiofiles==25.1.0
-aiohttp==3.14.0
+aiohttp==3.14.1
 requests==2.34.2
 orjson==3.11.9
 astral==3.2
 pytz==2026.2
 httpx==0.28.1
-sqlalchemy==2.0.50
+sqlalchemy==2.0.51
 aiosqlite==0.22.1
