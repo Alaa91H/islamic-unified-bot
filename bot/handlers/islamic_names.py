@@ -1,4 +1,5 @@
 from bot.decorators import safe_handler
+from bot.handlers.ui import with_bottom_controls
 
 _PAGE = 10
 
@@ -7,11 +8,11 @@ def register(app, deps) -> None:
     from pyrogram import filters
     from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-    from bot.data.islamic_names import NAMES_OF_ALLAH
-
     @app.on_message(filters.private & filters.command("names"))
     @safe_handler()
     async def names_cmd(client, message):
+        from bot.data.islamic_names import NAMES_OF_ALLAH
+
         total = len(NAMES_OF_ALLAH)
         await message.reply_text(
             f"🤲 **أسماء الله الحسنى**\n───\n"
@@ -24,6 +25,8 @@ def register(app, deps) -> None:
     @app.on_callback_query(filters.regex("^names:"))
     @safe_handler()
     async def names_callback(client, cq: CallbackQuery):
+        from bot.data.islamic_names import NAMES_OF_ALLAH
+
         parts = cq.data.split(":")
         action = parts[1]
 
@@ -48,25 +51,31 @@ def register(app, deps) -> None:
             page = (idx - 1) // _PAGE
             buttons = [
                 [
-                    InlineKeyboardButton(
-                        "⬅️ السابق", callback_data=f"names:show:{idx - 1}"
-                    )
-                    if idx > 1
-                    else None,
-                    InlineKeyboardButton(
-                        "التالي ➡️", callback_data=f"names:show:{idx + 1}"
-                    )
-                    if idx < 99
-                    else None,
+                    (
+                        InlineKeyboardButton(
+                            "⬅️ السابق", callback_data=f"names:show:{idx - 1}"
+                        )
+                        if idx > 1
+                        else None
+                    ),
+                    (
+                        InlineKeyboardButton(
+                            "التالي ➡️", callback_data=f"names:show:{idx + 1}"
+                        )
+                        if idx < 99
+                        else None
+                    ),
                 ],
                 [
                     InlineKeyboardButton(
                         "🔙 القائمة", callback_data=f"names:page:{page}"
                     )
                 ],
-                [InlineKeyboardButton("🔙 الرئيسية", callback_data="back_to_start")],
             ]
             buttons = [[b for b in row if b] for row in buttons if any(b for b in row)]
+            buttons = with_bottom_controls(
+                buttons, back_callback="back_to_start", home_callback=None
+            )
             await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
             await cq.answer()
 
@@ -74,7 +83,12 @@ def register(app, deps) -> None:
             await cq.message.delete()
             await cq.answer()
 
+        elif action == "_":
+            await cq.answer()
+
     def _names_keyboard(page: int):
+        from bot.data.islamic_names import NAMES_OF_ALLAH
+
         start = page * _PAGE
         end = min(start + _PAGE, 99)
         buttons = []
@@ -99,7 +113,7 @@ def register(app, deps) -> None:
                 InlineKeyboardButton("➡️", callback_data=f"names:page:{page + 1}")
             )
         buttons.append(nav)
-        buttons.append(
-            [InlineKeyboardButton("🔙 الرئيسية", callback_data="back_to_start")]
+        buttons = with_bottom_controls(
+            buttons, back_callback="back_to_start", home_callback=None
         )
         return InlineKeyboardMarkup(buttons)

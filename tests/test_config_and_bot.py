@@ -1,7 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -107,8 +107,8 @@ class TestNullStreamManager:
 class TestIslamicDataClass:
 
     def setup_method(self):
-        from bot.data.surahs import SURAHS
         from bot.data.adhkar import ADHKAR, ADHKAR_CATEGORIES
+        from bot.data.surahs import SURAHS
 
         self.SURAHS = SURAHS
         self.ADHKAR = ADHKAR

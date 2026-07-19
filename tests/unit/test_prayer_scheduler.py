@@ -1,7 +1,8 @@
 import asyncio
-import pytest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture
@@ -28,8 +29,11 @@ async def bundle(tmp_path):
 
     sched = PrayerScheduler(user_repo, group_repo, sent_repo, notifier)
     yield {
-        "sched": sched, "user_repo": user_repo, "group_repo": group_repo,
-        "sent_repo": sent_repo, "notifier": notifier,
+        "sched": sched,
+        "user_repo": user_repo,
+        "group_repo": group_repo,
+        "sent_repo": sent_repo,
+        "notifier": notifier,
     }
     await db.close()
 
@@ -37,24 +41,24 @@ async def bundle(tmp_path):
 @pytest.mark.asyncio
 async def test_tick_fires_notification_for_due_prayer(bundle):
     s = bundle["sched"]
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
-    ])
-    await s.tick()
-    bundle["notifier"].notify_user.assert_awaited_once_with(
-        1, "dhuhr", "12:00", False
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
+        ]
     )
+    await s.tick()
+    bundle["notifier"].notify_user.assert_awaited_once_with(1, "dhuhr", "12:00", False)
 
 
 @pytest.mark.asyncio
 async def test_tick_skips_already_sent(bundle):
     s = bundle["sched"]
-    await bundle["sent_repo"].mark_sent(
-        1, "user", "dhuhr", date.today().isoformat()
+    await bundle["sent_repo"].mark_sent(1, "user", "dhuhr", date.today().isoformat())
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
+        ]
     )
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
-    ])
     await s.tick()
     bundle["notifier"].notify_user.assert_not_awaited()
 
@@ -62,14 +66,18 @@ async def test_tick_skips_already_sent(bundle):
 @pytest.mark.asyncio
 async def test_tick_marks_sent_after_success(bundle):
     s = bundle["sched"]
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
-    ])
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
+        ]
+    )
     await s.tick()
     # tick ثانٍ لن يكرّر لأنه سُجّل
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
-    ])
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
+        ]
+    )
     await s.tick()
     assert bundle["notifier"].notify_user.await_count == 1
 
@@ -77,10 +85,15 @@ async def test_tick_marks_sent_after_success(bundle):
 @pytest.mark.asyncio
 async def test_tick_dispatches_group(bundle):
     s = bundle["sched"]
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("group", -100, {"prayer": "maghrib", "time": "18:30",
-                         "is_prelude": False}),
-    ])
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            (
+                "group",
+                -100,
+                {"prayer": "maghrib", "time": "18:30", "is_prelude": False},
+            ),
+        ]
+    )
     await s.tick()
     bundle["notifier"].broadcast_group_azan.assert_awaited_once_with(
         -100, "maghrib", "traditional"
@@ -91,11 +104,21 @@ async def test_tick_dispatches_group(bundle):
 async def test_prelude_uses_distinct_key(bundle):
     """المقدمة لها مفتاح مستقل prelude_<prayer> فلا تحجب الصلاة نفسها."""
     s = bundle["sched"]
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("user", 1, {"prayer": "fajr", "time": "05:00", "is_prelude": True,
-                     "prelude_key": "prelude_fajr"}),
-        ("user", 1, {"prayer": "fajr", "time": "05:00", "is_prelude": False}),
-    ])
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            (
+                "user",
+                1,
+                {
+                    "prayer": "fajr",
+                    "time": "05:00",
+                    "is_prelude": True,
+                    "prelude_key": "prelude_fajr",
+                },
+            ),
+            ("user", 1, {"prayer": "fajr", "time": "05:00", "is_prelude": False}),
+        ]
+    )
     await s.tick()
     # كلاهما أُرسل لأن المفاتيح مختلفة
     assert bundle["notifier"].notify_user.await_count == 2
@@ -104,13 +127,13 @@ async def test_prelude_uses_distinct_key(bundle):
 @pytest.mark.asyncio
 async def test_tick_one_failure_does_not_stop_others(bundle):
     s = bundle["sched"]
-    bundle["notifier"].notify_user = AsyncMock(
-        side_effect=[RuntimeError("boom"), True]
+    bundle["notifier"].notify_user = AsyncMock(side_effect=[RuntimeError("boom"), True])
+    s._find_due_prayers = AsyncMock(
+        return_value=[
+            ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
+            ("user", 2, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
+        ]
     )
-    s._find_due_prayers = AsyncMock(return_value=[
-        ("user", 1, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
-        ("user", 2, {"prayer": "dhuhr", "time": "12:00", "is_prelude": False}),
-    ])
     # يجب ألا يرفع tick رغم فشل الأول
     await s.tick()
     assert bundle["notifier"].notify_user.await_count == 2
@@ -134,7 +157,9 @@ async def test_check_due_returns_prayer_when_now_matches():
 
     # نتحقق فقط أن الدالة تُرجع dict صالح أو None دون خطأ
     result = PrayerScheduler._check_due(
-        "مكة المكرمة", "makkah", "standard",
+        "مكة المكرمة",
+        "makkah",
+        "standard",
         # وقت عشوائي بعيد عن أي صلاة يُرجع غالبًا None أو قيمة صحيحة
         __import__("datetime").datetime(2026, 6, 18, 8, 0),
     )
@@ -142,10 +167,42 @@ async def test_check_due_returns_prayer_when_now_matches():
 
 
 @pytest.mark.asyncio
+async def test_check_due_uses_city_local_time_not_utc_clock():
+    from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
+    from bot.scheduler.prayer_scheduler import PrayerScheduler
+
+    city = "مكة المكرمة"
+    coords = CityCoordinates.get_city_coords(city)
+    calc = PrayerTimeCalculator(
+        latitude=coords["lat"],
+        longitude=coords["lng"],
+        timezone=coords["tz"],
+        method="makkah",
+        asr_method="standard",
+        dst=coords.get("dst", False),
+        city_name=city,
+    )
+    local_date = datetime(2026, 7, 2)
+    dhuhr = calc.calculate_times(local_date)["dhuhr"]
+    hour, minute = map(int, dhuhr.split(":"))
+
+    due_at_utc = datetime(2026, 7, 2, hour - int(coords["tz"]), minute)
+    result = PrayerScheduler._check_due(
+        city, "makkah", "standard", due_at_utc, ["dhuhr"]
+    )
+
+    assert result is not None
+    assert result["prayer"] == "dhuhr"
+    assert result["date"] == "2026-07-02"
+
+
+@pytest.mark.asyncio
 async def test_check_due_unknown_city_returns_none():
     from bot.scheduler.prayer_scheduler import PrayerScheduler
-    from datetime import datetime
 
-    assert PrayerScheduler._check_due(
-        "مدينة_وهمية", "isna", "standard", datetime(2026, 6, 18, 12, 0)
-    ) is None
+    assert (
+        PrayerScheduler._check_due(
+            "مدينة_وهمية", "isna", "standard", datetime(2026, 6, 18, 12, 0)
+        )
+        is None
+    )

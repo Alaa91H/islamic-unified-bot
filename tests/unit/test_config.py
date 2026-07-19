@@ -65,7 +65,7 @@ def test_from_env_applies_defaults(monkeypatch):
     assert s.music_dir == "./music"
     assert s.default_city == "مكة المكرمة"
     assert s.max_reconnect_attempts == 10
-    assert s.scheduler_tick_seconds == 30
+    assert s.scheduler_tick_seconds == 60
     assert s.db_path == "./data/bot.db"
 
 

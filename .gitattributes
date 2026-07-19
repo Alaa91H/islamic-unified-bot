@@ -1,0 +1,30 @@
+# اضبط نهايات الأسطر تلقائيًا حسب نوع الملف
+# هذا يضمن أن سكربتات shell و systemd units تعمل بشكل صحيح على خادم Linux
+
+# ملفات نصية عامة: تُطبعع على شكل LF في المستودع
+* text=auto eol=lf
+
+# سكربتات shell و systemd و Python — LF إجباريًا (مهم للنشر على Linux)
+*.sh         text eol=lf
+*.service    text eol=lf
+*.timer      text eol=lf
+*.py         text eol=lf
+*.env        text eol=lf
+*.env.example text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+Dockerfile   text eol=lf
+*.ini        text eol=lf
+*.toml       text eol=lf
+*.sql        text eol=lf
+*.json       text eol=lf
+*.md         text eol=lf
+
+# ملفات ثنائية — لا تُعدّل
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.session binary
+*.db binary

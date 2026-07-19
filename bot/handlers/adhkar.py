@@ -8,23 +8,25 @@
 
 from bot.data.adhkar import ADHKAR, ADHKAR_CATEGORIES
 from bot.decorators import safe_handler
+from bot.handlers.ui import markup_with_bottom_controls
 
 
 def categories_keyboard():
     """لوحة فئات الأذكار (مع زر العودة). دالة نقية."""
-    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from pyrogram.types import InlineKeyboardButton
 
     kb = [
         [InlineKeyboardButton(v, callback_data=f"category_{k}")]
         for k, v in ADHKAR_CATEGORIES.items()
     ]
-    kb.append([InlineKeyboardButton("🔙 العودة", callback_data="back_to_start")])
-    return InlineKeyboardMarkup(kb)
+    return markup_with_bottom_controls(
+        kb, back_callback="back_to_start", home_callback=None
+    )
 
 
 def items_keyboard(category):
     """لوحة عناصر فئة معينة. تُرجع None إذا الفئة غير معروفة."""
-    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from pyrogram.types import InlineKeyboardButton
 
     items = ADHKAR.get(category, [])
     if not items:
@@ -38,14 +40,11 @@ def items_keyboard(category):
         ]
         for i, it in enumerate(items)
     ]
-    kb.append([InlineKeyboardButton("🔙 الرجوع", callback_data="main_adhkar_menu")])
-    return InlineKeyboardMarkup(kb)
+    return markup_with_bottom_controls(kb, back_callback="main_adhkar_menu")
 
 
 def item_text(category, idx):
     """نص عرض ذكر معين. تُرجع (text, keyboard) أو None."""
-    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
     items = ADHKAR.get(category, [])
     if idx < 0 or idx >= len(items):
         return None
@@ -55,11 +54,8 @@ def item_text(category, idx):
         f"📝 **النص:**\n{it['text']}\n\n"
         f"✨ **الفضل:**\n{it['benefit']}"
     )
-    kb = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("🔙 الرجوع", callback_data=f"category_{category}")],
-            [InlineKeyboardButton("🏠 الرئيسية", callback_data="back_to_start")],
-        ]
+    kb = markup_with_bottom_controls(
+        [], back_callback=f"category_{category}", back_label="🔙 الفئة"
     )
     return text, kb
 
@@ -99,8 +95,13 @@ def register(app, deps) -> None:
     @app.on_callback_query(filters.regex("^adhkar_"))
     @safe_handler()
     async def item_handler(client, callback_query):
-        parts = callback_query.data.replace("adhkar_", "").split("_")
-        category, idx = parts[0], int(parts[1])
+        raw = callback_query.data.removeprefix("adhkar_")
+        try:
+            category, idx_raw = raw.rsplit("_", 1)
+            idx = int(idx_raw)
+        except (ValueError, TypeError):
+            await callback_query.answer("❌ ذكر غير موجود", show_alert=True)
+            return
         result = item_text(category, idx)
         if result is None:
             await callback_query.answer("❌ ذكر غير موجود", show_alert=True)

@@ -8,45 +8,46 @@
 
 import logging
 
-from pyrogram import Client, filters
-from pyrogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
-
-from azan_manager import (
-    AzanNotificationManager,
-    AzanScheduler,
-    AzanStreamer,
-)
-from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
-
 logger = logging.getLogger(__name__)
 
-# إنشاء نوى الأنظمة
-azan_scheduler = AzanScheduler()
-azan_streamer = AzanStreamer()
-notification_manager = AzanNotificationManager()
+# إنشاء نوى الأنظمة (يتم إنشاؤها عند التحميل ولكن المكتبات الثقيلة تُستورد داخلياً)
+azan_scheduler = None
+azan_streamer = None
+notification_manager = None
+
+
+def _ensure_managers():
+    global azan_scheduler, azan_streamer, notification_manager
+    if azan_scheduler is not None:
+        return
+    from azan_manager import AzanNotificationManager, AzanScheduler, AzanStreamer
+
+    azan_scheduler = AzanScheduler()
+    azan_streamer = AzanStreamer()
+    notification_manager = AzanNotificationManager()
+
 
 # ============================================================================
 # أوامر الأذان الرئيسية
 # ============================================================================
 
 
-async def register_azan_commands(app: Client):
+async def register_azan_commands(app):
     """تسجيل أوامر الأذان مع البوت"""
+    from pyrogram import filters
+    from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    _ensure_managers()
 
     # ========================================================================
     # الأمر: /azan_setup - إعداد الأذان
     # ========================================================================
 
     @app.on_message(filters.command("azan_setup") & filters.private)
-    async def azan_setup(client: Client, message: Message):
+    async def azan_setup(client, message):
         """إعداد نظام الأذان"""
+        from bot.prayer.calculator import CityCoordinates
 
-        # عرض المدن المتاحة
         cities = CityCoordinates.get_all_cities()
 
         keyboard = []
@@ -79,8 +80,10 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_select_city:"))
-    async def select_city_handler(client: Client, callback_query: CallbackQuery):
+    async def select_city_handler(client, callback_query):
         """معالج اختيار المدينة"""
+        from bot.prayer.calculator import CityCoordinates
+
         user_id = callback_query.from_user.id
         city = callback_query.data.split(":", 1)[1]
 
@@ -89,7 +92,6 @@ async def register_azan_commands(app: Client):
             await callback_query.answer("❌ المدينة غير متاحة", show_alert=True)
             return
 
-        # إضافة المستخدم
         azan_scheduler.add_user(user_id, city)
 
         keyboard = [
@@ -134,8 +136,10 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_select_method:"))
-    async def select_method_handler(client: Client, callback_query: CallbackQuery):
+    async def select_method_handler(client, callback_query):
         """معالج اختيار طريقة الحساب"""
+        from bot.prayer.calculator import PrayerTimeCalculator
+
         user_id = callback_query.from_user.id
         parts = callback_query.data.split(":")
         city = parts[1]
@@ -170,8 +174,10 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_message(filters.command("azan_times") & filters.private)
-    async def azan_times(client: Client, message: Message):
+    async def azan_times(client, message):
         """عرض أوقات الصلاة اليوم"""
+        from bot.prayer.calculator import PrayerTimeCalculator
+
         user_id = message.from_user.id
 
         settings = azan_scheduler.get_user_settings(user_id)
@@ -186,7 +192,6 @@ async def register_azan_commands(app: Client):
             await message.reply_text("❌ خطأ في جلب أوقات الصلاة")
             return
 
-        # بناء الرسالة
         text = "🕌 *أوقات الصلاة*\n"
         text += f"📍 {times['city']}, {times['country']}\n"
         text += f"📅 {times['date']}\n"
@@ -216,7 +221,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_message(filters.command("azan_settings") & filters.private)
-    async def azan_settings(client: Client, message: Message):
+    async def azan_settings(client, message):
         """عرض وتعديل إعدادات الأذان"""
         user_id = message.from_user.id
 
@@ -275,9 +280,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_notification_settings"))
-    async def notification_settings_handler(
-        client: Client, callback_query: CallbackQuery
-    ):
+    async def notification_settings_handler(client, callback_query):
         """معالج إعدادات التنبيهات"""
         user_id = callback_query.from_user.id
         settings = azan_scheduler.get_user_settings(user_id)
@@ -320,9 +323,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_toggle_notifications"))
-    async def toggle_notifications_handler(
-        client: Client, callback_query: CallbackQuery
-    ):
+    async def toggle_notifications_handler(client, callback_query):
         """معالج تفعيل/تعطيل التنبيهات"""
         user_id = callback_query.from_user.id
         settings = azan_scheduler.get_user_settings(user_id)
@@ -333,7 +334,6 @@ async def register_azan_commands(app: Client):
         status_text = "✅ تم تفعيل" if new_status else "❌ تم تعطيل"
         await callback_query.answer(f"{status_text} التنبيهات", show_alert=True)
 
-        # إعادة تحميل الصفحة
         await callback_query.edit_message_text(
             f"🔔 *إعدادات التنبيهات*\n\n"
             f"التنبيهات: {'✅ مفعلة' if new_status else '❌ معطلة'}\n"
@@ -372,7 +372,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_toggle_prelude"))
-    async def toggle_prelude_handler(client: Client, callback_query: CallbackQuery):
+    async def toggle_prelude_handler(client, callback_query):
         """معالج تفعيل/تعطيل المقدمة"""
         user_id = callback_query.from_user.id
         settings = azan_scheduler.get_user_settings(user_id)
@@ -383,7 +383,6 @@ async def register_azan_commands(app: Client):
         status_text = "✅ تم تفعيل" if new_status else "❌ تم تعطيل"
         await callback_query.answer(f"{status_text} المقدمة", show_alert=True)
 
-        # إعادة تحميل الصفحة
         await callback_query.edit_message_text(
             f"🔔 *إعدادات التنبيهات*\n\n"
             f"التنبيهات: {'✅ مفعلة' if settings.notification_enabled else '❌ معطلة'}\n"
@@ -422,7 +421,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_stream_settings"))
-    async def stream_settings_handler(client: Client, callback_query: CallbackQuery):
+    async def stream_settings_handler(client, callback_query):
         """معالج إعدادات البث"""
         user_id = callback_query.from_user.id
         settings = azan_scheduler.get_user_settings(user_id)
@@ -463,7 +462,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_toggle_stream"))
-    async def toggle_stream_handler(client: Client, callback_query: CallbackQuery):
+    async def toggle_stream_handler(client, callback_query):
         """معالج تفعيل/تعطيل البث"""
         user_id = callback_query.from_user.id
         settings = azan_scheduler.get_user_settings(user_id)
@@ -474,7 +473,6 @@ async def register_azan_commands(app: Client):
         status_text = "✅ تم تفعيل" if new_status else "❌ تم تعطيل"
         await callback_query.answer(f"{status_text} البث", show_alert=True)
 
-        # إعادة تحميل الصفحة
         await callback_query.edit_message_text(
             f"🎵 *إعدادات البث*\n\n"
             f"البث: {'✅ مفعل' if new_status else '❌ معطل'}\n"
@@ -512,7 +510,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_message(filters.command("azan_next") & filters.private)
-    async def azan_next(client: Client, message: Message):
+    async def azan_next(client, message):
         """عرض الصلاة التالية"""
         user_id = message.from_user.id
 
@@ -566,8 +564,10 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_message(filters.command("azan_search"))
-    async def azan_search(client: Client, message: Message):
+    async def azan_search(client, message):
         """البحث عن مدينة"""
+        from bot.prayer.calculator import CityCoordinates
+
         if len(message.command) < 2:
             await message.reply_text(
                 "الاستخدام: /azan_search <اسم المدينة>\n" "مثال: /azan_search مكة"
@@ -583,7 +583,7 @@ async def register_azan_commands(app: Client):
 
         text = f"🔍 *نتائج البحث عن: {query}*\n\n"
 
-        for city in cities[:10]:  # عرض أول 10 نتائج
+        for city in cities[:10]:
             coords = CityCoordinates.get_city_coords(city)
             text += f"📍 {city} - {coords['country']}\n"
 
@@ -594,7 +594,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_back_main"))
-    async def back_main_handler(client: Client, callback_query: CallbackQuery):
+    async def back_main_handler(client, callback_query):
         """معالج العودة للقائمة الرئيسية"""
         user_id = callback_query.from_user.id
 
@@ -627,7 +627,7 @@ async def register_azan_commands(app: Client):
     # ========================================================================
 
     @app.on_callback_query(filters.regex("^azan_settings_menu"))
-    async def settings_menu_handler(client: Client, callback_query: CallbackQuery):
+    async def settings_menu_handler(client, callback_query):
         """معالج قائمة الإعدادات"""
         user_id = callback_query.from_user.id
 

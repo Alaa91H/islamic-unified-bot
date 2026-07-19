@@ -1,6 +1,7 @@
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 # Pyrogram needs an event loop at import time on some platforms
@@ -14,8 +15,9 @@ def _pyrogram_event_loop():
 
 class TestMainMenuFunctions:
     def test_home_keyboard_returns_markup(self):
-        from bot.handlers.main_menu import home_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.main_menu import home_keyboard
 
         markup = home_keyboard()
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -62,9 +64,10 @@ class TestMainMenuFunctions:
 
 class TestAdhkarFunctions:
     def test_categories_keyboard_returns_markup(self):
-        from bot.handlers.adhkar import categories_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
         from bot.data.adhkar import ADHKAR_CATEGORIES
+        from bot.handlers.adhkar import categories_keyboard
 
         markup = categories_keyboard()
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -77,9 +80,10 @@ class TestAdhkarFunctions:
         assert "🔙" in markup.inline_keyboard[-1][0].text
 
     def test_items_keyboard_valid_category(self):
-        from bot.handlers.adhkar import items_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
         from bot.data.adhkar import ADHKAR
+        from bot.handlers.adhkar import items_keyboard
 
         for cat in ADHKAR:
             markup = items_keyboard(cat)
@@ -92,8 +96,9 @@ class TestAdhkarFunctions:
         assert items_keyboard("nonexistent") is None
 
     def test_item_text_valid_index(self):
-        from bot.handlers.adhkar import item_text
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.adhkar import item_text
 
         result = item_text("morning", 0)
         assert result is not None
@@ -113,8 +118,9 @@ class TestAdhkarFunctions:
         assert item_text("morning", 999) is None
 
     def test_item_text_evening(self):
-        from bot.handlers.adhkar import item_text
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.adhkar import item_text
 
         result = item_text("evening", 0)
         assert result is not None
@@ -131,8 +137,9 @@ class TestAdhkarFunctions:
 
 class TestQuranFunctions:
     def test_surahs_keyboard_page_0(self):
-        from bot.handlers.quran import surahs_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.quran import surahs_keyboard
 
         markup = surahs_keyboard(0)
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -161,9 +168,10 @@ class TestQuranFunctions:
         assert any("التالي" in t for t in texts)
 
     def test_reciters_keyboard_returns_markup(self):
-        from bot.handlers.quran import reciters_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
         from bot.data.sources import QURANIC_RECITERS
+        from bot.handlers.quran import reciters_keyboard
 
         markup = reciters_keyboard()
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -191,8 +199,9 @@ class TestMainMenuRegistration:
 
     @pytest.mark.asyncio
     async def test_start_handler_replies(self):
-        from bot.handlers.main_menu import register, WELCOME_TEXT, home_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.main_menu import WELCOME_TEXT, register
 
         app = MagicMock()
         captured = {}
@@ -201,6 +210,7 @@ class TestMainMenuRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
@@ -224,7 +234,7 @@ class TestMainMenuRegistration:
 
     @pytest.mark.asyncio
     async def test_help_handler_replies(self):
-        from bot.handlers.main_menu import register, PRIVATE_HELP
+        from bot.handlers.main_menu import PRIVATE_HELP, register
 
         app = MagicMock()
         captured = {}
@@ -233,6 +243,7 @@ class TestMainMenuRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
@@ -253,7 +264,7 @@ class TestMainMenuRegistration:
 
     @pytest.mark.asyncio
     async def test_home_handler_about_callback(self):
-        from bot.handlers.main_menu import register, ABOUT_TEXT, home_keyboard
+        from bot.handlers.main_menu import ABOUT_TEXT, register
 
         app = MagicMock()
         captured = {}
@@ -264,6 +275,7 @@ class TestMainMenuRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -296,6 +308,7 @@ class TestMainMenuRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -340,6 +353,7 @@ class TestAdhkarRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
@@ -358,7 +372,7 @@ class TestAdhkarRegistration:
 
     @pytest.mark.asyncio
     async def test_menu_handler(self):
-        from bot.handlers.adhkar import register, categories_keyboard
+        from bot.handlers.adhkar import register
 
         app = MagicMock()
         captured = {}
@@ -369,6 +383,7 @@ class TestAdhkarRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -400,6 +415,7 @@ class TestAdhkarRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -430,6 +446,7 @@ class TestAdhkarRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -458,6 +475,7 @@ class TestAdhkarRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -488,6 +506,7 @@ class TestAdhkarRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -528,6 +547,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
@@ -557,6 +577,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -585,6 +606,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -613,6 +635,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -641,6 +664,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -669,6 +693,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -686,8 +711,8 @@ class TestQuranRegistration:
 
     @pytest.mark.asyncio
     async def test_quran_reciter_handler_valid(self):
-        from bot.handlers.quran import register
         from bot.data.sources import QURANIC_RECITERS
+        from bot.handlers.quran import register
 
         app = MagicMock()
         captured = {}
@@ -698,6 +723,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -727,6 +753,7 @@ class TestQuranRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_callback_query = capture_on_callback
@@ -766,6 +793,7 @@ class TestOwnerRegistration:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
@@ -782,8 +810,10 @@ class TestOwnerRegistration:
         app.on_message = MagicMock(return_value=lambda fn: fn)
         app.on_callback_query = MagicMock(return_value=lambda fn: fn)
 
-        with patch("bot.handlers.owner.HAS_STREAMING", True):
-            register_owner = __import__("bot.handlers.owner", fromlist=["register"]).register
+        with patch("bot.streaming.HAS_STREAMING", True):
+            register_owner = __import__(
+                "bot.handlers.owner", fromlist=["register"]
+            ).register
             register_owner(app, self._make_deps())
         assert app.on_message.call_count >= 4
 
@@ -868,7 +898,12 @@ class TestOwnerRegistration:
         if "stream_cmd" in captured:
             client = MagicMock()
             message = MagicMock()
-            message.command = ["stream", "-100123", "url", "https://example.com/audio.mp3"]
+            message.command = [
+                "stream",
+                "-100123",
+                "url",
+                "https://example.com/audio.mp3",
+            ]
             message.reply_text = AsyncMock()
             message.from_user = MagicMock()
             message.from_user.id = 1
@@ -973,9 +1008,15 @@ class TestOwnerRegistration:
         from datetime import datetime, timedelta
 
         deps = self._make_deps()
-        deps.stream_manager.active_streams = MagicMock(return_value={
-            -100123: {"url": "test", "title": "Test Stream", "started_at": datetime.now() - timedelta(minutes=30)},
-        })
+        deps.stream_manager.active_streams = MagicMock(
+            return_value={
+                -100123: {
+                    "url": "test",
+                    "title": "Test Stream",
+                    "started_at": datetime.now() - timedelta(minutes=30),
+                },
+            }
+        )
 
         app = MagicMock()
         captured = self._capture_handlers(app, deps)
@@ -1017,10 +1058,20 @@ class TestOwnerRegistration:
     async def test_files_cmd_with_files(self):
         deps = self._make_deps()
         deps.settings.music_dir = "/tmp/music"
-        deps.stream_manager.get_local_files = MagicMock(return_value={
-            1: {"name": "test.mp3", "path": "/tmp/music/test.mp3", "size": 5 * 1024 * 1024},
-            2: {"name": "test2.mp3", "path": "/tmp/music/test2.mp3", "size": 10 * 1024 * 1024},
-        })
+        deps.stream_manager.get_local_files = MagicMock(
+            return_value={
+                1: {
+                    "name": "test.mp3",
+                    "path": "/tmp/music/test.mp3",
+                    "size": 5 * 1024 * 1024,
+                },
+                2: {
+                    "name": "test2.mp3",
+                    "path": "/tmp/music/test2.mp3",
+                    "size": 10 * 1024 * 1024,
+                },
+            }
+        )
 
         app = MagicMock()
         captured = self._capture_handlers(app, deps)
@@ -1056,20 +1107,7 @@ class TestHandlerRegistry:
         assert app.on_callback_query.called
 
     def test_registry_imports_all_modules(self):
-        from bot.handlers import HandlerRegistry
 
-        import bot.handlers.adhkar
-        import bot.handlers.azan
-        import bot.handlers.main_menu
-        import bot.handlers.owner
-        import bot.handlers.quran
-        import bot.handlers.hadith
-        import bot.handlers.quran_text
-        import bot.handlers.islamic_names
-        import bot.handlers.group_adhkar
-        import bot.handlers.group_quran
-        import bot.handlers.islamic_tools
-        import bot.handlers.quran_radio_handler
 
         assert True
 
@@ -1132,12 +1170,14 @@ class TestAzanHandlerExecution:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         def capture_on_callback(filter_):
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
@@ -1512,7 +1552,7 @@ class TestAdminOnlyDecorator:
         update.reply_text.assert_called_once_with("❌ هذا الأمر للمشرفين فقط")
 
     @pytest.mark.asyncio
-    async def test_admin_only_exception_is_swallowed(self):
+    async def test_admin_only_exception_blocks_execution(self):
         from bot.decorators import admin_only
 
         mock_app = MagicMock()
@@ -1528,12 +1568,14 @@ class TestAdminOnlyDecorator:
         update.from_user.id = 123
         update.message.chat.id = -100123
         update.message.from_user.id = 123
+        update.reply_text = AsyncMock()
 
         result = await handler(client, update)
-        assert result == "ok"
+        assert result is None
+        update.reply_text.assert_awaited_once_with("❌ تعذّر التحقق من صلاحيات المشرف")
 
     @pytest.mark.asyncio
-    async def test_admin_only_no_user_still_passes(self):
+    async def test_admin_only_no_user_blocks_execution(self):
         from bot.decorators import admin_only
 
         mock_app = MagicMock()
@@ -1546,9 +1588,11 @@ class TestAdminOnlyDecorator:
         update = MagicMock()
         update.from_user = None
         update.message = None
+        update.reply_text = AsyncMock()
 
         result = await handler(client, update)
-        assert result == "ok"
+        assert result is None
+        update.reply_text.assert_awaited_once_with("❌ تعذّر التحقق من صلاحيات المشرف")
 
     @pytest.mark.asyncio
     async def test_admin_only_update_is_message(self):

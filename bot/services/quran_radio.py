@@ -31,7 +31,13 @@ def estimate_duration(surah_num: int) -> int:
 
 
 AUDIO_QUALITY_OPTIONS = ["low", "medium", "high", "studio"]
-AUDIO_QUALITY_LABELS = {"low": "منخفضة", "medium": "متوسطة", "high": "عالية", "studio": "استوديو"}
+AUDIO_QUALITY_LABELS = {
+    "low": "منخفضة",
+    "medium": "متوسطة",
+    "high": "عالية",
+    "studio": "استوديو",
+}
+
 
 @dataclass
 class RadioState:
@@ -52,8 +58,8 @@ class QuranRadio:
         self._settings = settings
         self._states: Dict[int, RadioState] = {}
 
-    @property
-    def current_surah(self, state: RadioState) -> int:
+    def get_current_surah(self, state: RadioState) -> int:
+        """يُرجع رقم السورة الحالية لحالة راديو معيّنة."""
         if 0 <= state.current_index < len(state.queue):
             return state.queue[state.current_index]
         return 1
@@ -63,7 +69,10 @@ class QuranRadio:
         return f"{base}{surah_num:03d}.mp3"
 
     async def start(
-        self, chat_id: int, reciter_key: str = "abdul_basit", surah_start: Optional[int] = None
+        self,
+        chat_id: int,
+        reciter_key: str = "abdul_basit",
+        surah_start: Optional[int] = None,
     ) -> bool:
         old = self._states.get(chat_id)
         if old and old.task:
@@ -149,7 +158,9 @@ class QuranRadio:
         name = SURAHS.get(surah_num, f"{surah_num}")
         dur = estimate_duration(surah_num)
 
-        ok = await self._stream.play(chat_id, url, f"{surah_num} - {name}", loop=False, duration_min=dur + 5)
+        ok = await self._stream.play(
+            chat_id, url, f"{surah_num} - {name}", loop=False, duration_min=dur + 5
+        )
         if ok:
             state.playing = True
             state.paused = False
@@ -178,7 +189,7 @@ class QuranRadio:
         state.task = asyncio.create_task(_advance())
 
     async def set_quality(self, chat_id: int, quality: str) -> bool:
-        from bot.streaming.stream_manager import StreamManager
+
         state = self._states.get(chat_id)
         if not state or quality not in AUDIO_QUALITY_OPTIONS:
             return False

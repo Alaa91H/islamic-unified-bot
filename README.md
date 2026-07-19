@@ -168,6 +168,10 @@ The remaining values have sensible defaults for most deployments. See [Environme
 
 ## 🖥️ Deployment
 
+> 💡 **خادم Oracle Cloud المجاني (1GB RAM)**: راجع قسم
+> [النشر على Oracle Cloud](#-النشر-على-oracle-cloud-المجاني) أدناه للحصول على نشر مستقل
+> بضغطة زر مع تحديثات أسبوعية تلقائية.
+
 ### Linux / Ubuntu (systemd)
 
 #### Prerequisites
@@ -271,6 +275,107 @@ docker compose logs -f
 
 ---
 
+## ☁️ النشر على Oracle Cloud المجاني
+
+المشروع مهيّأ بالكامل للنشر المستقل على خادم Oracle Cloud Free Tier
+(VM.Standard.E2.1.Micro بـ 1GB RAM، أو VM.Standard.A1.Flex بمعمارية ARM).
+
+### النشر بضغطة زر (موصى به)
+
+بعد الدخول إلى الخادم عبر SSH:
+
+```bash
+# الطريقة 1: سكربت شامل من الصفر (يستنسخ + يثبّت + يجهّز systemd)
+curl -fsSL https://raw.githubusercontent.com/Alaa91H/islamic-unified-bot/main/scripts/deploy.sh | sudo bash
+
+# الطريقة 2: بعد استنساخ المستودع يدويًا
+git clone https://github.com/Alaa91H/islamic-unified-bot.git /opt/islamic-unified-bot
+cd /opt/islamic-unified-bot
+sudo bash scripts/install.sh
+```
+
+### ما الذي يقوم به `install.sh` تلقائيًا؟
+
+| الخطوة | التفاصيل |
+|--------|----------|
+| إنشاء swap | يُنشئ ملف swap بحجم 2× RAM (حتى 4GB) لخوادم ≤ 2GB RAM |
+| تثبيت الحزم | `python3`, `ffmpeg`, `git`, `build-essential` |
+| البيئة الافتراضية | `venv` مع كل مكتبات `requirements.txt` |
+| systemd units | خدمة البوت + timer التحديث + timer التنظيف |
+| تقوية الأمان | `NoNewPrivileges`, `ProtectSystem`, حدود ذاكرة صارمة |
+| الملكية | مجلدات `logs`/`data`/`azan_data`/`music` جاهزة |
+| `swappiness=10` | تفضيل RAM على swap لأداء أفضل |
+
+### التشغيل بعد التثبيت
+
+```bash
+# 1) عدّل الإعدادات
+sudo nano /opt/islamic-unified-bot/.env
+
+# 2) شغّل البوت
+sudo systemctl start islamic-bot
+
+# 3) تابع السجلّات
+sudo journalctl -u islamic-bot -f
+
+# 4) تأكد من حالة الـ timers المجدولة
+systemctl list-timers 'islamic-bot-*'
+```
+
+### التحديثات التلقائية
+
+يُثبّت `install.sh` ثلاث خدمات systemd:
+
+| الخدمة | التوقيت | الوظيفة |
+|--------|---------|---------|
+| `islamic-bot.service` | دائم | يشغّل البوت ويعيد تشغيله عند الفشل |
+| `islamic-bot-update.timer` | كل سبت 03:00 | يحدّث: apt + git pull + pip + إعادة تشغيل |
+| `islamic-bot-cleanup.timer` | كل سبت 04:00 | ينظّف: السجلات + caches + Docker + tmp |
+
+#### تشغيل التحديث/التنظيف يدويًا
+
+```bash
+# تحديث فوري كامل
+sudo systemctl start islamic-bot-update.service
+
+# متابعة سجل التحديث
+sudo tail -f /var/log/islamic-bot-update.log
+
+# تنظيف يدوي
+sudo bash /opt/islamic-unified-bot/scripts/cleanup.sh
+```
+
+### حدود الموارد المُطبّقة
+
+| المكوّن | القيمة | السبب |
+|---------|--------|-------|
+| `MemoryMax` | 700 MB | يترك 300MB للنظام + ffmpeg على خادم 1GB |
+| `MemoryHigh` | 600 MB | عتبة تحذير قبل التقييد |
+| مراقب الذاكرة الداخلي | 600 MB | يُوقف الأذكار + `gc.collect()` قبل OOM |
+| `OOMScoreAdjust` | -500 | حماية البوت من OOM killer |
+| `Restart=on-failure` | backoff 5→60s | منع إجهاد المعالج |
+
+### استكشاف الأخطاء
+
+```bash
+# فشل إقلاع البوت
+sudo journalctl -u islamic-bot --no-pager -n 100
+
+# استهلاك الذاكرة الحالي
+sudo systemctl status islamic-bot | grep Memory
+
+# فحص swap
+free -h
+
+# التحقق من تفعيل timers
+systemctl list-timers --all | grep islamic
+
+# إعادة تثبيت الخدمات بعد تحديث السكربتات
+sudo bash /opt/islamic-unified-bot/scripts/install.sh
+```
+
+---
+
 ## 🔄 CI/CD Pipeline
 
 The pipeline runs on every push to `main` / `develop` and on every pull request targeting `main`.
@@ -279,8 +384,8 @@ The pipeline runs on every push to `main` / `develop` and on every pull request 
 push / PR
     │
     ├─ 🔍 Lint        black, isort, flake8, pylint
-    ├─ 🔒 Security    bandit, safety, pip-audit, detect-secrets
-    ├─ 🧪 Tests       pytest on Python 3.10 / 3.11 / 3.12 + Codecov
+    ├─ 🔒 Security    bandit, pip-audit
+    ├─ 🧪 Tests       pytest on Python 3.12 + coverage
     │        ↓
     ├─ 💨 Smoke Test  import checks, prayer-time smoke, data integrity
     │        ↓
@@ -368,6 +473,14 @@ Test coverage threshold is enforced at **75 %** in CI.
 | `MAX_RETRIES` | `3` | HTTP retry count |
 | `DEBUG_MODE` | `false` | Enable verbose debug logging |
 | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG` / `INFO` / `WARNING` / `ERROR`) |
+| `LOG_FORMAT` | `text` | Logging format (`text` / `json`) |
+| `LIGHTWEIGHT_MODE` | `true` | تفعيل الوضع الخفيف (gc.collect عند الإقلاع) |
+| `DB_POOL_SIZE` | `3` | حجم تجمّع اتصالات قاعدة البيانات (الأقل = ذاكرة أقل) |
+| `API_TIMEOUT` | `5` | مهلة طلبات API الخارجية (ثواني) |
+| `CACHE_TTL` | `3600` | مدة بقاء الـ cache (ثواني) |
+| `MAX_CONCURRENT_STREAMS` | `2` | أقصى عدد بثات صوتية متزامنة |
+| `SCHEDULER_TICK_SECONDS` | `60` | فترة دورة الجدولة (ثواني) |
+| `HIGH_MEMORY_THRESHOLD_MB` | `600` | عتبة مراقب الذاكرة الداخلي (MB) |
 
 ---
 
@@ -404,7 +517,7 @@ ci:        changes to CI/CD configuration
 ## 🔒 Security
 
 - **Never commit** `.env`, `*.session`, or any token/key files. They are in `.gitignore`.
-- The CI pipeline runs `bandit`, `safety`, `pip-audit`, and `detect-secrets` on every push.
+- The CI pipeline runs `bandit` and `pip-audit` on every push.
 - Secrets are stored exclusively in GitHub Actions secrets — never in source code.
 - If you discover a security vulnerability, please open a **private** security advisory via GitHub rather than a public issue.
 

@@ -7,50 +7,46 @@
 """
 
 import logging
-from dataclasses import dataclass
-
-from bot.config import Settings
-from bot.db.connection import Database
-from bot.db.repositories.adhkar_settings import AdhkarSettingsRepo
-from bot.db.repositories.group_settings import GroupSettingsRepo
-from bot.db.repositories.sent_notifications import SentNotificationsRepo
-from bot.db.repositories.user_settings import UserSettingsRepo
-from bot.scheduler.adhkar_scheduler import AdhkarScheduler
-from bot.scheduler.notifier import Notifier
-from bot.scheduler.prayer_scheduler import PrayerScheduler
-from bot.services.quran_radio import QuranRadio
-from bot.streaming.null_stream_manager import NullStreamManager
-from bot.streaming.stream_manager import StreamManager
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class Dependencies:
     """كل التبعيات المشتركة بين المعالجات والخدمات."""
 
-    settings: Settings
-    db: Database
-    user_repo: UserSettingsRepo
-    group_repo: GroupSettingsRepo
-    sent_repo: SentNotificationsRepo
-    adhkar_repo: AdhkarSettingsRepo
-    stream_manager: StreamManager
-    notifier: Notifier
-    scheduler: PrayerScheduler
-    adhkar_scheduler: AdhkarScheduler
-    quran_radio: QuranRadio
+    __slots__ = (
+        "settings",
+        "db",
+        "user_repo",
+        "group_repo",
+        "sent_repo",
+        "adhkar_repo",
+        "stream_manager",
+        "notifier",
+        "scheduler",
+        "adhkar_scheduler",
+        "quran_radio",
+    )
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
-async def build_dependencies(
-    settings: Settings, app, stream_factory=None
-) -> Dependencies:
+async def build_dependencies(settings, app, stream_factory=None):
     """يبني كل التبعيات ويُرجعها في حاوية واحدة. app = Pyrogram Client.
 
     stream_factory قابل للحقن للاختبار (يتجاوز استيراد pytgcalls الافتراضي).
     """
-    db = Database(settings.db_path)
+    from bot.db.connection import Database
+
+    db = Database(settings.db_path, pool_size=settings.db_pool_size)
     await db.connect()
+
+    from bot.db.repositories.user_settings import UserSettingsRepo
+    from bot.db.repositories.group_settings import GroupSettingsRepo
+    from bot.db.repositories.sent_notifications import SentNotificationsRepo
+    from bot.db.repositories.adhkar_settings import AdhkarSettingsRepo
 
     user_repo = UserSettingsRepo(db)
     group_repo = GroupSettingsRepo(db)
@@ -59,6 +55,8 @@ async def build_dependencies(
 
     try:
         if stream_factory is None:
+            from bot.streaming.stream_manager import StreamManager
+
             stream_manager = StreamManager(
                 app,
                 max_reconnect=settings.max_reconnect_attempts,
@@ -69,8 +67,15 @@ async def build_dependencies(
         else:
             stream_manager = stream_factory(app)
     except ImportError:
+        from bot.streaming.null_stream_manager import NullStreamManager
+
         logger.warning("⚠️ py-tgcalls غير مثبت — البث الصوتي معطّل")
         stream_manager = NullStreamManager(app)
+
+    from bot.scheduler.notifier import Notifier
+    from bot.scheduler.prayer_scheduler import PrayerScheduler
+    from bot.scheduler.adhkar_scheduler import AdhkarScheduler
+    from bot.services.quran_radio import QuranRadio
 
     notifier = Notifier(app, stream_manager)
     scheduler = PrayerScheduler(
@@ -80,7 +85,12 @@ async def build_dependencies(
         notifier,
         tick_seconds=settings.scheduler_tick_seconds,
     )
-    adhkar_scheduler = AdhkarScheduler(adhkar_repo, app)
+    adhkar_scheduler = AdhkarScheduler(
+        adhkar_repo,
+        app,
+        tick_seconds=settings.scheduler_tick_seconds,
+        group_repo=group_repo,
+    )
     quran_radio = QuranRadio(stream_manager, settings)
 
     return Dependencies(
@@ -108,5 +118,5 @@ async def shutdown_dependencies(deps: Dependencies) -> None:
     ):
         try:
             await coro_factory()
-        except Exception as e:  # noqa: BLE001 — الإغلاق يجب أن يستمر
+        except Exception as e:
             logger.warning("⚠️ خطأ أثناء إغلاق %s: %s", label, e)

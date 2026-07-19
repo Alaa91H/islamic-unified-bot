@@ -1,6 +1,7 @@
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -44,12 +45,14 @@ def _capture_handlers(app, module, deps):
         def decorator(func):
             captured[func.__name__] = func
             return func
+
         return decorator
 
     def capture_on_callback(filter_):
         def decorator(func):
             captured[func.__name__] = func
             return func
+
         return decorator
 
     app.on_message = capture_on_message
@@ -62,6 +65,7 @@ def _capture_handlers(app, module, deps):
 # ============================================================
 # module-level functions
 # ============================================================
+
 
 class TestGroupQuranModuleFunctions:
     def test_get_surah_name_known(self):
@@ -79,7 +83,15 @@ class TestGroupQuranModuleFunctions:
     def test_messages_dict_has_required_keys(self):
         from bot.handlers.group_quran import MESSAGES
 
-        for key in ("not_group", "no_number", "invalid", "playing", "failed", "stopped", "not_streaming"):
+        for key in (
+            "not_group",
+            "no_number",
+            "invalid",
+            "playing",
+            "failed",
+            "stopped",
+            "not_streaming",
+        ):
             assert key in MESSAGES
 
 
@@ -133,6 +145,7 @@ class TestQuranTextModuleFunctions:
 # Owner handler tests (HAS_STREAMING=False path)
 # ============================================================
 
+
 class TestOwnerStreamingUnavailable:
     def test_register_streaming_unavailable_registers_handlers(self):
         from bot.handlers.owner import _register_streaming_unavailable
@@ -156,13 +169,14 @@ class TestOwnerStreamingUnavailable:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
         app.on_callback_query = MagicMock(return_value=lambda fn: fn)
 
         deps = _make_admin_deps()
-        with patch("bot.handlers.owner.HAS_STREAMING", False):
+        with patch("bot.streaming.HAS_STREAMING", False):
             owner_register(app, deps)
 
         if "stream_unavailable" in captured:
@@ -188,13 +202,14 @@ class TestOwnerStreamingUnavailable:
             def decorator(func):
                 captured[func.__name__] = func
                 return func
+
             return decorator
 
         app.on_message = capture_on_message
         app.on_callback_query = MagicMock(return_value=lambda fn: fn)
 
         deps = _make_admin_deps()
-        with patch("bot.handlers.owner.HAS_STREAMING", False):
+        with patch("bot.streaming.HAS_STREAMING", False):
             owner_register(app, deps)
 
         if "stop_unavailable" in captured:
@@ -214,9 +229,11 @@ class TestOwnerStreamingUnavailable:
 # Group Quran handler execution tests
 # ============================================================
 
+
 class TestGroupQuranHandlerExecution:
     def _capture(self, app, deps):
         import bot.handlers.group_quran
+
         return _capture_handlers(app, bot.handlers.group_quran, deps)
 
     @pytest.mark.asyncio
@@ -332,9 +349,11 @@ class TestGroupQuranHandlerExecution:
 # Group Adhkar handler execution tests
 # ============================================================
 
+
 class TestGroupAdhkarHandlerExecution:
     def _capture(self, app, deps):
         import bot.handlers.group_adhkar
+
         return _capture_handlers(app, bot.handlers.group_adhkar, deps)
 
     @pytest.mark.asyncio
@@ -434,9 +453,11 @@ class TestGroupAdhkarHandlerExecution:
 # Quran Text handler execution tests
 # ============================================================
 
+
 class TestQuranTextHandlerExecution:
     def _capture(self, app, deps):
         import bot.handlers.quran_text
+
         return _capture_handlers(app, bot.handlers.quran_text, deps)
 
     @pytest.mark.asyncio
@@ -507,9 +528,11 @@ class TestQuranTextHandlerExecution:
 # Islamic Names handler execution tests
 # ============================================================
 
+
 class TestIslamicNamesHandlerExecution:
     def _capture(self, app, deps):
         import bot.handlers.islamic_names
+
         return _capture_handlers(app, bot.handlers.islamic_names, deps)
 
     @pytest.mark.asyncio
@@ -597,9 +620,11 @@ class TestIslamicNamesHandlerExecution:
 # Hadith handler execution tests
 # ============================================================
 
+
 class TestHadithHandlerExecution:
     def _capture(self, app, deps):
         import bot.handlers.hadith
+
         return _capture_handlers(app, bot.handlers.hadith, deps)
 
     @pytest.mark.asyncio
@@ -674,8 +699,7 @@ class TestHadithHandlerExecution:
         }
 
         app = MagicMock()
-        with patch("bot.data.hadith_data.get_hadith", new=AsyncMock(return_value=hadith_data)):
-            captured = self._capture(app, MagicMock())
+        captured = self._capture(app, MagicMock())
 
         if "hadith_callback" in captured:
             client = MagicMock()
@@ -684,10 +708,16 @@ class TestHadithHandlerExecution:
             cq.message.edit_text = AsyncMock()
             cq.answer = AsyncMock()
 
-            with patch("bot.data.hadith_data.format_hadith", return_value="متن الحديث"):
-                await captured["hadith_callback"](client, cq)
-                cq.message.edit_text.assert_called_once()
-                cq.answer.assert_called_once()
+            with patch(
+                "bot.data.hadith_data.get_hadith",
+                new=AsyncMock(return_value=hadith_data),
+            ):
+                with patch(
+                    "bot.data.hadith_data.format_hadith", return_value="متن الحديث"
+                ):
+                    await captured["hadith_callback"](client, cq)
+                    cq.message.edit_text.assert_called_once()
+                    cq.answer.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_hadith_callback_get_not_found(self):
@@ -760,7 +790,9 @@ class TestHadithHandlerExecution:
         }
 
         app = MagicMock()
-        with patch("bot.data.hadith_data.get_hadith", new=AsyncMock(return_value=hadith_data)):
+        with patch(
+            "bot.data.hadith_data.get_hadith", new=AsyncMock(return_value=hadith_data)
+        ):
             captured = self._capture(app, MagicMock())
 
         if "hadith_inline" in captured:

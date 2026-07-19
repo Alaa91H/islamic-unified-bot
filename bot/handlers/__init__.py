@@ -15,6 +15,7 @@ class HandlerRegistry:
             adhkar,
             azan,
             group_adhkar,
+            group_control,
             group_quran,
             hadith,
             islamic_names,
@@ -34,6 +35,7 @@ class HandlerRegistry:
         hadith.register(app, deps)
         islamic_names.register(app, deps)
         azan.register(app, deps)
+        group_control.register(app, deps)
         group_quran.register(app, deps)
         group_adhkar.register(app, deps)
         quran_radio_handler.register(app, deps)

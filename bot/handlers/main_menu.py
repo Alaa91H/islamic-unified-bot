@@ -18,33 +18,29 @@ def home_keyboard():
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(
-                    "📖 القرآن الكريم (بث + نص + تفسير)", callback_data="quran_menu"
-                )
-            ],
-            [InlineKeyboardButton("📚 الحديث الشريف", callback_data="hadith:books")],
-            [
-                InlineKeyboardButton(
-                    "🤲 أسماء الله الحسنى", callback_data="names:page:0"
-                )
+                InlineKeyboardButton("📖 القرآن الكريم", callback_data="quran_menu"),
+                InlineKeyboardButton("📚 الحديث الشريف", callback_data="hadith:books"),
             ],
             [
-                InlineKeyboardButton(
-                    "📿 الأذكار الإسلامية", callback_data="main_adhkar_menu"
-                )
+                InlineKeyboardButton("🤲 الأذكار", callback_data="main_adhkar_menu"),
+                InlineKeyboardButton("🕌 الأذان والصلاة", callback_data="azan_home"),
             ],
             [
-                InlineKeyboardButton(
-                    "🕌 أوقات الأذان والصلاة", callback_data="azan_home"
-                )
+                InlineKeyboardButton("📻 راديو القرآن", callback_data="radio_info"),
+                InlineKeyboardButton("🧮 الزكاة", callback_data="zakat_home"),
             ],
-            [InlineKeyboardButton("📻 راديو القرآن (بث متواصل)", callback_data="radio_info")],
-            [InlineKeyboardButton("🧮 حاسبة الزكاة", callback_data="zakat_home")],
-            [InlineKeyboardButton("🌙 رمضان", callback_data="ramadan_home")],
-            [InlineKeyboardButton("📖 تسميع القرآن", callback_data="memorize_home")],
-            [InlineKeyboardButton("📊 إحصائيات البوت", callback_data="stats_home")],
-            [InlineKeyboardButton("ℹ️ حول البوت", callback_data="about")],
-            [InlineKeyboardButton("🌐 اللغة", callback_data="language_home")],
+            [
+                InlineKeyboardButton("🌙 رمضان", callback_data="ramadan_home"),
+                InlineKeyboardButton("📖 تسميع القرآن", callback_data="memorize_home"),
+            ],
+            [
+                InlineKeyboardButton("🎛️ لوحة التحكم", callback_data="panel_quran"),
+                InlineKeyboardButton("🌐 اللغة", callback_data="language_home"),
+            ],
+            [
+                InlineKeyboardButton("📊 الإحصائيات", callback_data="stats_home"),
+                InlineKeyboardButton("ℹ️ حول البوت", callback_data="about"),
+            ],
         ]
     )
 
@@ -58,6 +54,7 @@ WELCOME_TEXT = (
     "✅ **الأذان** - أوقات الصلاة + تنبيهات\n"
     "✅ **البث الصوتي** - قرآن وأذان في المكالمات\n"
     "✅ **راديو القرآن** - بث متواصل للسور مع تحكم كامل\n"
+    "✅ **لوحة التحكم** - /panel (مركزية) + /control (للمجموعات)\n"
     "✅ **حاسبة الزكاة** - زكاة المال والذهب والفضة\n"
     "✅ **رمضان** - أدعية ومواقيت السحور والإفطار\n"
     "✅ **تسميع القرآن** - اختبار حفظ السور\n"
@@ -84,27 +81,60 @@ PRIVATE_HELP = (
     "/azan_setup - إعداد مدينتك\n"
     "/azan_times - أوقات الصلاة اليوم\n"
     "/azan_next - الصلاة التالية\n"
-    "/azan_search [مدينة] - البحث عن مدينة"
+    "/azan_search [مدينة] - البحث عن مدينة\n"
+    "/hijri - التقويم الهجري\n"
+    "/qibla [مدينة] - اتجاه القبلة\n"
+    "/calendar - التقويم الإسلامي\n\n"
+    "**🎛️ لوحة التحكم:**\n"
+    "/panel - لوحة التحكم المركزية\n"
+    "/commands - جميع الأوامر\n"
+    "/daily - جرعتك اليومية\n"
+    "/stats - إحصائيات الاستخدام"
 )
 
 GROUP_HELP = (
-    "🕌 **البوت الإسلامي الموحد - أوامر المجموعات**\n\n"
-    "**🎙 بث القرآن في المكالمة الصوتية (للمشرفين):**\n"
-    "/quran [رقم السورة] - تشغيل سورة في المكالمة\n"
-    "مثال: `/quran 1` لسورة الفاتحة\n"
-    "/stop - إيقاف البث\n\n"
-    "**📻 راديو القرآن (للمشرفين):**\n"
-    "/radio - تشغيل راديو القرآن (بث متواصل للسور)\n"
-    "/radio stop - إيقاف الراديو\n"
-    "• أزرار تحكم: ⏮️ ⏸️ ⏭️ 🔀 🎙️ ⏹️\n\n"
-    "**📿 الأذكار التلقائية (للمشرفين):**\n"
-    "/adhkar - لوحة تحكم إعدادات الأذكار\n"
-    "• تشغيل/إطفاء الأذكار الدورية\n"
-    "• ضبط المدة بين الأذكار\n"
-    "• تفعيل أذكار الصباح والمساء والجمعة\n\n"
-    "**ℹ️ أوامر أخرى:**\n"
-    "/start - عرض رسالة الترحيب\n"
-    "/help - هذه التعليمات"
+    "🕌 **البوت الإسلامي الموحد — أوامر المجموعات**\n\n"
+    "⚠️ **ملاحظة مهمة**: البوت لا يستطيع إنشاء المكالمة الصوتية.\n"
+    "يجب على أحد المشرفين بدء مكالمة صوتية في المجموعة أولاً،\n"
+    "ثم استخدام الأوامر أدناه للتحكم في البث.\n\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "**🎙 بث القرآن في المكالمة الصوتية** *(للمشرفين)*\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "▫️ `/quran [رقم السورة]` ← تشغيل سورة مباشر\n"
+    "   مثال: `/quran 1` → الفاتحة، `/quran 67` → الملك\n"
+    "▫️ `/stop` ← إيقاف البث وإغلاق المكالمة\n"
+    "▫️ عند التشغيل تظهر أزرار: ⏹️ إيقاف | 🔙 لوحة التحكم\n\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "**🎛️ لوحة التحكم الشاملة** *(للمشرفين)*\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "▫️ `/control` ← قائمة أزرار متكاملة:\n"
+    "   📖 تشغيل سورة | 📻 راديو القرآن\n"
+    "   🛑 إيقاف البث | ℹ️ حالة البث\n"
+    "   🤲 إعدادات الأذكار | 🕌 أوقات الصلاة\n"
+    "   ⚙️ إعدادات المجموعة\n\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "**📻 راديو القرآن — بث متواصل** *(للمشرفين)*\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "▫️ `/radio` ← تشغيل راديو (سور متتالية بلا توقف)\n"
+    "▫️ `/radio stop` ← إيقاف الراديو\n"
+    "▫️ أزرار التحكم أثناء البث:\n"
+    "   ⏮️ السابق | ⏸️/▶️ إيقاف/استئناف | ⏭️ التالي\n"
+    "   🔀 عشوائي/تسلسلي | 🎙️ تغيير القارئ | ⏹️ إيقاف\n\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "**📿 الأذكار التلقائية** *(للمشرفين)*\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "▫️ `/adhkar` ← لوحة تحكم الأذكار:\n"
+    "   • 🔁 الذكر الدوري (كل مدة زمنية)\n"
+    "   • 🌅 أذكار الصباح (يومياً)\n"
+    "   • 🌆 أذكار المساء (يومياً)\n"
+    "   • 🕌 أذكار الجمعة (يوم الجمعة)\n\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "**ℹ️ أوامر عامة**\n"
+    "━━━━━━━━━━━━━━━━\n"
+    "▫️ `/start` ← رسالة الترحيب\n"
+    "▫️ `/help` ← هذه التعليمات\n\n"
+    "💡 *جميع أوامر البث تتطلب وجود مكالمة صوتية في المجموعة*\n"
+    "💡 *يمكنك استخدام `/panel` في الخاص للوحة تحكم مركزية*"
 )
 
 ABOUT_TEXT = (
@@ -140,11 +170,12 @@ def register(app, deps) -> None:
         if bot_user.id not in [u.id for u in message.new_chat_members]:
             return
         await message.reply_text(
-    "🕌 **أهلاً بالبوت الإسلامي الموحد في مجموعتكم!**\n\n"
-    "🎙 **بث القرآن**: استخدم `/quran [رقم]` في المكالمة الصوتية (للمشرفين)\n"
-    "📻 **راديو القرآن**: استخدم `/radio` لبث متواصل للسور (للمشرفين)\n"
-    "📿 **الأذكار**: استخدم `/adhkar` لتفعيل الأذكار التلقائية (للمشرفين)\n\n"
-    "📌 **للتعليمات الكاملة:** /help"
+            "🕌 **أهلاً بالبوت الإسلامي الموحد في مجموعتكم!**\n\n"
+            "🎙 **بث القرآن**: استخدم `/quran [رقم]` في المكالمة الصوتية (للمشرفين)\n"
+            "📻 **راديو القرآن**: استخدم `/radio` لبث متواصل للسور (للمشرفين)\n"
+            "🎛️ **لوحة التحكم**: استخدم `/control` للتحكم الكامل (للمشرفين)\n"
+            "📿 **الأذكار**: استخدم `/adhkar` لتفعيل الأذكار التلقائية (للمشرفين)\n\n"
+            "📌 **للتعليمات الكاملة:** /help"
         )
 
     @app.on_message(filters.command("help"))
@@ -155,12 +186,98 @@ def register(app, deps) -> None:
         else:
             await message.reply_text(PRIVATE_HELP)
 
-    @app.on_callback_query(filters.regex("^(back_to_start|about|radio_info|zakat_home|ramadan_home|memorize_home|stats_home|language_home)$"))
+    @app.on_message(filters.command("panel"))
+    @safe_handler()
+    async def panel_cmd(client, message):
+        from pyrogram.types import InlineKeyboardButton
+
+        from bot.handlers.ui import markup_with_bottom_controls
+
+        kb = markup_with_bottom_controls(
+            [
+                [InlineKeyboardButton("📖 القرآن الكريم", callback_data="panel_quran")],
+                [InlineKeyboardButton("🕌 الأذان والصلاة", callback_data="panel_azan")],
+                [
+                    InlineKeyboardButton(
+                        "🤲 الأذكار والأدعية", callback_data="panel_adhkar"
+                    )
+                ],
+                [InlineKeyboardButton("📚 الحديث", callback_data="panel_hadith")],
+                [InlineKeyboardButton("🧮 الزكاة", callback_data="panel_zakat")],
+                [InlineKeyboardButton("📊 الإحصائيات", callback_data="stats_home")],
+                [InlineKeyboardButton("⚙️ الإعدادات", callback_data="panel_settings")],
+            ],
+            home_callback="back_to_start",
+        )
+        await message.reply_text(
+            "🎛️ **لوحة التحكم المركزية**\nاختر القسم:", reply_markup=kb
+        )
+
+    @app.on_callback_query(
+        filters.regex("^panel_(quran|azan|adhkar|hadith|zakat|settings)$")
+    )
+    @safe_handler()
+    async def panel_sections(client, cq):
+        section = cq.data.split("_", 1)[1]
+        from bot.handlers.ui import markup_with_bottom_controls
+
+        texts = {
+            "quran": (
+                "📖 **القرآن الكريم**\n\n"
+                "/quran - قائمة السور\n/quran_text - النص والتفسير\n/quran_search - بحث\n"
+                "/quran [رقم] - بث سورة\n/radio - راديو القرآن\n/download - تحميل MP3"
+            ),
+            "azan": (
+                "🕌 **الأذان والصلاة**\n\n"
+                "/azan_setup - إعداد المدينة\n/azan_times - أوقات الصلاة\n/azan_next - الصلاة التالية\n"
+                "/azan_settings - الإعدادات\n/qibla [مدينة] - القبلة\n/hijri - التاريخ الهجري\n"
+                "/prayer [مدينة] - أوقات مدينة"
+            ),
+            "adhkar": (
+                "🤲 **الأذكار والأدعية**\n\n"
+                "/adhkar - الأذكار (24 تصنيفاً)\n/dua - الأدعية الجامعة\n/tasbih - مسبحة\n"
+                "/daily - جرعتك اليومية\n/names - أسماء الله الحسنى"
+            ),
+            "hadith": (
+                "📚 **الحديث النبوي**\n\n"
+                "/hadith - مكتبة الحديث (6 كتب)\n/hadith [كتاب] [رقم] - حديث محدد"
+            ),
+            "zakat": (
+                "🧮 **الزكاة**\n\n"
+                "/zakat - معلومات الزكاة\n/zakat حساب [المبلغ] - حساب الزكاة"
+            ),
+            "settings": (
+                "⚙️ **الإعدادات**\n\n"
+                "/language - تغيير اللغة\n/azan_settings - إعدادات الأذان\n"
+                "/commands - جميع الأوامر"
+            ),
+        }
+        await cq.message.edit_text(
+            texts.get(section, "❌ قسم غير معروف"),
+            reply_markup=markup_with_bottom_controls(
+                [], back_callback="back_to_start", home_callback=None
+            ),
+        )
+
+    @app.on_callback_query(filters.regex("^ui:(close|noop)$"))
+    @safe_handler()
+    async def common_ui_handler(client, cq):
+        if cq.data == "ui:close":
+            await cq.message.delete()
+        await cq.answer()
+
+    @app.on_callback_query(
+        filters.regex(
+            "^(back_to_start|about|radio_info|zakat_home|ramadan_home|memorize_home|stats_home|language_home)$"
+        )
+    )
     @safe_handler()
     async def home_handler(client, callback_query):
         data = callback_query.data
         if data == "about":
-            await callback_query.message.edit_text(ABOUT_TEXT, reply_markup=home_keyboard())
+            await callback_query.message.edit_text(
+                ABOUT_TEXT, reply_markup=home_keyboard()
+            )
         elif data == "radio_info":
             await callback_query.message.edit_text(
                 "📻 **راديو القرآن**\n\nبث متواصل لسور القرآن الكريم بدون توقف مثل الراديو.\n\n"
@@ -215,5 +332,8 @@ def register(app, deps) -> None:
                 reply_markup=home_keyboard(),
             )
         else:
-            await callback_query.message.edit_text("🕌 **القائمة الرئيسية**\n\nاختر من القائمة:", reply_markup=home_keyboard())
+            await callback_query.message.edit_text(
+                "🕌 **القائمة الرئيسية**\n\nاختر من القائمة:",
+                reply_markup=home_keyboard(),
+            )
         await callback_query.answer()

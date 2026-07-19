@@ -1,4 +1,5 @@
 from bot.decorators import safe_handler
+from bot.handlers.ui import with_bottom_controls
 
 _PAGE_SIZE = 10
 
@@ -29,8 +30,8 @@ def register(app, deps) -> None:
                 )
             ]
         )
-        surahs_kb.append(
-            [InlineKeyboardButton("🔙 رجوع", callback_data="back_to_start")]
+        surahs_kb = with_bottom_controls(
+            surahs_kb, back_callback="back_to_start", home_callback=None
         )
 
         await message.reply_text(
@@ -60,8 +61,10 @@ def register(app, deps) -> None:
                         "🎙 الاستماع", callback_data=f"quran_surah:{surah}"
                     )
                 ],
-                [InlineKeyboardButton("🔙 رجوع", callback_data="quran_text")],
             ]
+            buttons = with_bottom_controls(
+                buttons, back_callback="quran_menu", back_label="🔙 القرآن"
+            )
             await cq.message.edit_text(
                 f"📖 **سورة {name}**\n"
                 f"───\n"
@@ -115,8 +118,10 @@ def register(app, deps) -> None:
                 InlineKeyboardButton(
                     "ℹ️ معلومات السورة", callback_data=f"qts:{surah}:0:info"
                 ),
-                InlineKeyboardButton("🔙 رجوع", callback_data="quran_text"),
             ]
+        )
+        extra = with_bottom_controls(
+            extra, back_callback="quran_menu", back_label="🔙 القرآن"
         )
 
         text = f"📖 **{name}** - صفحة {page}\n───\n" + "\n".join(lines)

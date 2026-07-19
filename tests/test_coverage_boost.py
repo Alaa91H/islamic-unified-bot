@@ -4,13 +4,11 @@ Tests to boost coverage for the new bot structure
 """
 
 import os
-import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ============================================================
 # Tests for bot.config
@@ -133,6 +131,7 @@ class TestMainKeyboard:
     async def test_home_keyboard_returns_markup(self):
         # Avoid pyrogram import outside event loop
         import asyncio
+
         try:
             asyncio.get_event_loop()
         except RuntimeError:
@@ -145,11 +144,13 @@ class TestMainKeyboard:
     @pytest.mark.asyncio
     async def test_home_keyboard_has_rows(self):
         import asyncio
+
         try:
             asyncio.get_event_loop()
         except RuntimeError:
             asyncio.set_event_loop(asyncio.new_event_loop())
         from pyrogram.types import InlineKeyboardMarkup
+
         from bot.handlers.main_menu import home_keyboard
 
         kb = home_keyboard()
@@ -226,6 +227,7 @@ class TestAzanCommandsModule:
 
     def test_register_azan_commands_is_coroutine(self):
         import inspect
+
         import azan_commands
 
         assert inspect.iscoroutinefunction(azan_commands.register_azan_commands)

@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly cleanup for Islamic Unified Bot (logs, cache, docker)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/islamic-unified-bot/scripts/cleanup.sh
+User=root

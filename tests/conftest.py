@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import os
 import sys
 import tempfile
@@ -12,6 +13,10 @@ try:
     asyncio.get_event_loop()
 except RuntimeError:
     asyncio.set_event_loop(asyncio.new_event_loop())
+
+# On Windows/Python 3.14 the first Pyrogram import can be slow enough to trip
+# pytest-timeout when it happens inside an individual test.
+importlib.import_module("pyrogram.types")
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

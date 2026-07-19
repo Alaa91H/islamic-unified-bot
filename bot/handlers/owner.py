@@ -1,6 +1,4 @@
-from bot.data.surahs import SURAHS
 from bot.decorators import owner_only, safe_handler
-from bot.streaming import HAS_STREAMING
 
 
 def register(app, deps) -> None:
@@ -8,15 +6,18 @@ def register(app, deps) -> None:
 
     settings = deps.settings
     stream_manager = deps.stream_manager
+    from bot.streaming import HAS_STREAMING
 
     if not HAS_STREAMING:
         _register_streaming_unavailable(app, settings)
         return
 
-    @app.on_message(filters.command("stream"))
+    @app.on_message(filters.private & filters.command("stream"))
     @owner_only(settings)
     @safe_handler()
     async def stream_cmd(client, message):
+        from bot.data.surahs import SURAHS
+
         args = message.command[1:]
         if len(args) < 2:
             await message.reply_text(
@@ -27,14 +28,23 @@ def register(app, deps) -> None:
             )
             return
 
-        chat_id = int(args[0])
+        try:
+            chat_id = int(args[0])
+        except ValueError:
+            await message.reply_text("❌ معرف المجموعة غير صالح. يجب أن يكون رقمًا.")
+            return
+
         stream_type = args[1].lower()
 
         if stream_type == "quran":
             if len(args) < 3:
                 await message.reply_text("❌ أدخل رقم السورة")
                 return
-            surah_num = int(args[2])
+            try:
+                surah_num = int(args[2])
+            except ValueError:
+                await message.reply_text("❌ رقم السورة يجب أن يكون رقمًا صحيحًا")
+                return
             if not (1 <= surah_num <= 114):
                 await message.reply_text("❌ رقم السورة يجب أن يكون 1-114")
                 return
@@ -56,7 +66,11 @@ def register(app, deps) -> None:
             if len(args) < 3:
                 await message.reply_text("❌ أدخل رقم الملف")
                 return
-            file_num = int(args[2])
+            try:
+                file_num = int(args[2])
+            except ValueError:
+                await message.reply_text("❌ رقم الملف يجب أن يكون رقمًا صحيحًا")
+                return
             files = stream_manager.get_local_files(settings.music_dir)
             if file_num not in files:
                 await message.reply_text(f"❌ الملف {file_num} غير موجود")
@@ -65,19 +79,25 @@ def register(app, deps) -> None:
             ok = await stream_manager.play(chat_id, info["path"], info["name"])
             await message.reply_text(f"{'✅' if ok else '❌'} {info['name']}")
 
-    @app.on_message(filters.command("stop"))
+    @app.on_message(filters.private & filters.command("stop"))
     @owner_only(settings)
     @safe_handler()
     async def stop_cmd(client, message):
         args = message.command[1:]
         if not args:
-            await message.reply_text("`/stop [chat_id]`")
+            await message.reply_text(
+                "❌ استخدم: `/stop [chat_id]`\nمثال: `/stop -100123456789`"
+            )
             return
-        chat_id = int(args[0])
+        try:
+            chat_id = int(args[0])
+        except ValueError:
+            await message.reply_text("❌ معرف المجموعة غير صالح. يجب أن يكون رقمًا.")
+            return
         ok = await stream_manager.stop(chat_id)
         await message.reply_text(f"{'✅' if ok else '❌'} إيقاف البث في `{chat_id}`")
 
-    @app.on_message(filters.command("status"))
+    @app.on_message(filters.private & filters.command("status"))
     @owner_only(settings)
     @safe_handler()
     async def status_cmd(client, message):
@@ -95,11 +115,13 @@ def register(app, deps) -> None:
                 text += f"⏱️ {mins}د\n"
         await message.reply_text(text)
 
-    @app.on_message(filters.command("dashboard"))
+    @app.on_message(filters.private & filters.command("dashboard"))
     @owner_only(settings)
     @safe_handler()
     async def dashboard_cmd(client, message):
-        import json, os
+        import json
+        import os
+
         stream_count = len(stream_manager.active_streams())
         usage_path = os.path.join("data", "usage_counts.json")
         total_usage = 0
@@ -109,7 +131,9 @@ def register(app, deps) -> None:
                 data = json.load(f)
                 total_usage = sum(data.values())
                 sorted_cmds = sorted(data.items(), key=lambda x: -x[1])[:10]
-                top_cmds = "\n".join(f"  {i+1}. `/{c}`: {n}" for i, (c, n) in enumerate(sorted_cmds))
+                top_cmds = "\n".join(
+                    f"  {i + 1}. `/{c}`: {n}" for i, (c, n) in enumerate(sorted_cmds)
+                )
         except (FileNotFoundError, json.JSONDecodeError):
             top_cmds = "  لا توجد بيانات"
         await message.reply_text(
@@ -120,7 +144,7 @@ def register(app, deps) -> None:
             f"_آخر تحديث: الآن_"
         )
 
-    @app.on_message(filters.command("files"))
+    @app.on_message(filters.private & filters.command("files"))
     @owner_only(settings)
     @safe_handler()
     async def files_cmd(client, message):

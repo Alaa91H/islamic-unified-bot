@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 def test_now_hhmm_returns_string():
@@ -38,7 +39,6 @@ def test_is_friday_returns_false_other_days(mock_dt):
 @patch("bot.scheduler.adhkar_scheduler.random.choice")
 def test_pick_random_item_returns_item(mock_choice):
     from bot.scheduler.adhkar_scheduler import _pick_random_item
-    from bot.data.adhkar import ADHKAR
 
     mock_choice.side_effect = lambda x: x[0] if isinstance(x, list) else x
     category, item = _pick_random_item(["morning"])
@@ -49,7 +49,7 @@ def test_pick_random_item_returns_item(mock_choice):
 def test_pick_random_item_empty_category():
     from bot.scheduler.adhkar_scheduler import _pick_random_item
 
-    with patch("bot.scheduler.adhkar_scheduler.ADHKAR", {"empty_cat": []}):
+    with patch("bot.scheduler.adhkar_scheduler._get_adhkar", return_value={"empty_cat": []}):
         category, item = _pick_random_item(["empty_cat"])
         assert category is None
         assert item is None
@@ -58,7 +58,11 @@ def test_pick_random_item_empty_category():
 def test_format_adhkar_returns_correct_format():
     from bot.scheduler.adhkar_scheduler import _format_adhkar
 
-    item = {"title": "Test Title", "text": "Test text content", "benefit": "Test benefit"}
+    item = {
+        "title": "Test Title",
+        "text": "Test text content",
+        "benefit": "Test benefit",
+    }
     result = _format_adhkar(item)
     assert "Test Title" in result
     assert "Test text content" in result
@@ -130,7 +134,10 @@ async def test_tick_processes_all_groups():
     scheduler._app.send_message = AsyncMock()
 
     with patch("bot.scheduler.adhkar_scheduler._pick_random_item") as mock_pick:
-        mock_pick.return_value = ("morning", {"title": "Test", "text": "Test", "benefit": "Test"})
+        mock_pick.return_value = (
+            "morning",
+            {"title": "Test", "text": "Test", "benefit": "Test"},
+        )
         await scheduler.tick()
         repo.update_partial.assert_called_once()
 
@@ -180,7 +187,10 @@ async def test_send_adhkar_without_header():
 
     scheduler = AdhkarScheduler(repo, app, tick_seconds=9999)
     with patch("bot.scheduler.adhkar_scheduler._pick_random_item") as mock_pick:
-        mock_pick.return_value = ("morning", {"title": "Test", "text": "Body", "benefit": "B"})
+        mock_pick.return_value = (
+            "morning",
+            {"title": "Test", "text": "Body", "benefit": "B"},
+        )
         await scheduler._send_adhkar(-100, ["morning"])
 
     app.send_message.assert_called_once()

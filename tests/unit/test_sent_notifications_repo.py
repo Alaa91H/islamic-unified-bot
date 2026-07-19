@@ -1,5 +1,6 @@
-import pytest
 from datetime import date
+
+import pytest
 
 
 @pytest.fixture
@@ -49,6 +50,7 @@ async def test_user_and_group_targets_independent(repo):
     await repo.mark_sent(1, "user", "fajr", today)
     # نفس الرقم لكن كمجموعة = هدف مختلف
     assert await repo.already_sent(1, "group", "fajr", today) is False
+    assert await repo.mark_sent(1, "group", "fajr", today) is True
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import contextlib
+import gc
 import logging
+import os
 import sys
 
 from dotenv import load_dotenv
@@ -11,14 +14,106 @@ load_dotenv()
 
 logger = logging.getLogger("islamic_bot")
 
+# مراقب الذاكرة: يُضبط افتراضيًا ليتماشى مع حد systemd (MemoryMax=700M).
+# عند تجاوز العتبة يتم تعطيل الأذكار لتفريغ الذاكرة قبل أن يقتل systemd العملية.
+_MEMORY_CHECK_INTERVAL = 1800
+_DEFAULT_HIGH_MEMORY_THRESHOLD = 600 * 1024 * 1024
+
+
+def _get_env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+_HIGH_MEMORY_THRESHOLD = _get_env_int(
+    "HIGH_MEMORY_THRESHOLD_MB", _DEFAULT_HIGH_MEMORY_THRESHOLD // (1024 * 1024)
+) * (1024 * 1024)
+
+
+def _get_memory_usage() -> int:
+    try:
+        import psutil
+
+        return psutil.Process(os.getpid()).memory_info().rss
+    except ImportError:
+        return 0
+
+
+async def _memory_monitor(deps):
+    """يراقب استهلاك الذاكرة كل 30 دقيقة ويعطّل الأذكار إذا تجاوز الحد.
+
+    العتبة الافتراضية 600MB — أقل من حد systemd MemoryMax (700M) — حتى
+    يتاح للبوت تنظيف نفسه قبل أن يُقتل من OOM killer.
+    عند انخفاض الذاكرة تحت عتبة آمنة، تُستعادة الأذكار إن كانت متوقفة.
+    """
+    warn_threshold = int(_HIGH_MEMORY_THRESHOLD * 0.85)
+    recovery_threshold = int(_HIGH_MEMORY_THRESHOLD * 0.70)
+    adhkar_paused = False
+    while True:
+        try:
+            await asyncio.sleep(_MEMORY_CHECK_INTERVAL)
+        except asyncio.CancelledError:
+            break
+        mem = _get_memory_usage()
+        if mem == 0:
+            continue
+        mem_mb = mem / (1024 * 1024)
+        logger.info("📊 استخدام الذاكرة: %.1f MB", mem_mb)
+        if mem > _HIGH_MEMORY_THRESHOLD:
+            logger.warning(
+                "⚠️ الذاكرة %.1f MB تجاوزت الحد %d MB — إيقاف أذكار وتنظيف",
+                mem_mb,
+                _HIGH_MEMORY_THRESHOLD // (1024 * 1024),
+            )
+            gc.collect()
+            if deps.adhkar_scheduler and deps.adhkar_scheduler._task is not None:
+                await deps.adhkar_scheduler.stop()
+                adhkar_paused = True
+        elif mem > warn_threshold:
+            logger.warning("🔶 الذاكرة %.1f MB تقترب من الحد — تنظيف استباقي", mem_mb)
+            gc.collect()
+        elif adhkar_paused and mem < recovery_threshold:
+            logger.info(
+                "🔄 الذاكرة %.1f MB عادت للحد الآمن (< %d MB) — إعادة تشغيل الأذكار",
+                mem_mb,
+                recovery_threshold // (1024 * 1024),
+            )
+            if deps.adhkar_scheduler and deps.adhkar_scheduler._task is None:
+                await deps.adhkar_scheduler.start()
+            adhkar_paused = False
+
+
+async def _heartbeat():
+    """يكتب ملف heartbeat كل دقيقة ليفحصه Docker HEALTHCHECK.
+
+    إن تجمّد الـ event loop (deadlock) أو انقطع اتصال Telegram، لن يُحدّث
+    الملف وسيعتبر Docker الحاوية غير صحية ويعيد تشغيلها.
+    """
+    import time
+    from pathlib import Path
+
+    health_path = Path(".health")
+    while True:
+        try:
+            health_path.write_text(str(time.time()))
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            await asyncio.sleep(60)
+
 
 async def main():
     from bot.config import Settings
-    from bot.logging_setup import setup_logging
-    from bot.deps import build_dependencies, shutdown_dependencies
     from bot.db.migrate_from_json import migrate_from_json
+    from bot.deps import build_dependencies, shutdown_dependencies
+    from bot.logging_setup import setup_logging
 
-    # 1. تهيئة التسجيل
     settings = Settings.from_env()
     setup_logging(
         log_level=settings.log_level,
@@ -30,9 +125,11 @@ async def main():
     logger.info("🕌 البوت الإسلامي الموحد v2 - يبدأ التشغيل...")
     logger.info("=" * 70)
 
-    # 2. بناء التطبيق والتبعيات
     app = None
     deps = None
+    monitor_task = None
+    heartbeat_task = None
+    app_started = False
     try:
         from pyrogram import Client
 
@@ -44,55 +141,78 @@ async def main():
         )
         deps = await build_dependencies(settings, app)
 
-        # تسجيل المعالجات
         from bot.handlers import HandlerRegistry
 
         HandlerRegistry().register(app, deps)
 
-        # 3. هجرة البيانات القديمة (إن وُجدت)
         old_json = f"{settings.azan_data_dir}/user_settings.json"
         await migrate_from_json(old_json, deps.user_repo)
 
-        # 4. بدء الخدمات
+        app_started = True
+        await app.start()
+        logger.info("✅ اتصال Telegram جاهز")
+
         if hasattr(deps.stream_manager, "start"):
             await deps.stream_manager.start()
         await deps.scheduler.start()
+
+        if settings.lightweight_mode:
+            gc.collect()
+            logger.info("🧹 تم تنظيف الذاكرة (gc.collect) في الوضع الخفيف")
+
         await deps.adhkar_scheduler.start()
+
+        monitor_task = asyncio.create_task(_memory_monitor(deps))
+        heartbeat_task = asyncio.create_task(_heartbeat())
 
         logger.info("✅ جميع الأنظمة جاهزة!")
         logger.info(f"👤 معرف المالك: {settings.owner_id}")
 
-        # 5. انتظار إلى الأبد
         await asyncio.Event().wait()
 
     except Exception as e:
         logger.exception("❌ خطأ حرج: %s", e)
-        sys.exit(1)
+        raise
     finally:
+        if monitor_task:
+            monitor_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await monitor_task
+        if heartbeat_task:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
         logger.info("🛑 إيقاف البوت...")
         if deps:
             await shutdown_dependencies(deps)
-        if app:
+        if app_started:
             await app.stop()
         logger.info("✅ تم الإيقاف بنجاح")
 
 
 if __name__ == "__main__":
     try:
+        import uvloop
+
+        uvloop.install()
+        logger.info("✅ uvloop مثبت — أداء أعلى")
+    except ImportError:
+        pass
+
+    try:
         from pyrogram import Client
 
-        Client  # noqa — التحقق من توفر المكتبة
+        Client
     except ImportError:
         logger.error(
             "❌ المكتبة Pyrogram غير مثبتة. قم بتشغيل: pip install -r requirements.txt"
         )
-        sys.exit(1)
 
     try:
-        app_instance = Client("islamic_unified_bot")  # noqa — تحقق سريع
+        app_instance = Client("islamic_unified_bot")
         del app_instance
     except Exception:
-        pass  # لن يعمل بدون token وهذا طبيعي
+        pass
 
     try:
         asyncio.run(main())

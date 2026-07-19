@@ -19,16 +19,14 @@
 import asyncio
 import contextlib
 import logging
-from datetime import datetime
-from typing import List, Tuple
-
-from bot.db.repositories.sent_notifications import SentNotificationsRepo
-from bot.scheduler.notifier import Notifier
+import random
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
-# نوع العنصر المستحق: (نوع_الهدف، معرّف_الهدف، معلومات)
-_DueItem = Tuple[str, int, dict]
+MAX_CONSECUTIVE_FAILURES = 3
+BASE_BACKOFF_SECONDS = 10
+MAX_BACKOFF_SECONDS = 300
 
 
 def _to_minutes(hhmm: str) -> int:
@@ -48,27 +46,31 @@ def _within(t1: str, t2: str, tolerance: int = 1) -> bool:
     return abs(_to_minutes(t1) - _to_minutes(t2)) <= tolerance
 
 
+def _utc_now() -> datetime:
+    """وقت UTC بدون tzinfo ليتوافق مع حسابات الصلاة الحالية."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _city_local_now(now_utc: datetime, coords: dict) -> datetime:
+    """حوّل UTC إلى وقت المدينة المحلي حسب tz وDST المخزنين في cities.json."""
+    tz_hours = float(coords.get("tz") or 0)
+    if coords.get("dst", False):
+        tz_hours += 1
+    return now_utc + timedelta(hours=tz_hours)
+
+
 class PrayerScheduler:
     """حلقة asyncio خلفية لاكتشاف أوقات الصلاة وإطلاق التنبيهات."""
 
-    TICK_SECONDS = 30
-
-    def __init__(
-        self,
-        user_repo,
-        group_repo,
-        sent_repo: SentNotificationsRepo,
-        notifier: Notifier,
-        tick_seconds: int = None,
-    ):
+    def __init__(self, user_repo, group_repo, sent_repo, notifier, tick_seconds=None):
         self._user_repo = user_repo
         self._group_repo = group_repo
         self._sent_repo = sent_repo
         self._notifier = notifier
-        if tick_seconds is not None:
-            self.TICK_SECONDS = tick_seconds
-        self._task: asyncio.Task | None = None
+        self.TICK_SECONDS = tick_seconds if tick_seconds is not None else 60
+        self._task = None
         self._running = False
+        self._consecutive_failures = 0
 
     async def start(self) -> None:
         """يبدأ حلقة الجدولة الخلفية."""
@@ -93,30 +95,49 @@ class PrayerScheduler:
         while self._running:
             try:
                 await self.tick()
+                self._consecutive_failures = 0
             except Exception:
-                logger.exception("⚠️ خطأ في دورة الجدولة (ستستأنف)")
-            await asyncio.sleep(self.TICK_SECONDS)
+                self._consecutive_failures += 1
+                logger.exception(
+                    "⚠️ خطأ في دورة الجدولة (%d/%d)",
+                    self._consecutive_failures,
+                    MAX_CONSECUTIVE_FAILURES,
+                )
+            jitter = random.uniform(-0.25, 0.25) * self.TICK_SECONDS
+            sleep_time = self.TICK_SECONDS + jitter
+            if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                backoff = min(
+                    BASE_BACKOFF_SECONDS
+                    * (2 ** (self._consecutive_failures - MAX_CONSECUTIVE_FAILURES)),
+                    MAX_BACKOFF_SECONDS,
+                )
+                sleep_time += backoff
+                logger.warning("🔁 circuit breaker: زيادة النوم %dث", int(sleep_time))
+            try:
+                await asyncio.sleep(sleep_time)
+            except asyncio.CancelledError:
+                break
 
     async def tick(self) -> None:
-        """دورة واحدة: اكتشف التنبيهات المستحقة الآن وأطلقها.
-
-        قابلة للاختبار بمعزل: تستدعي _find_due_prayers (قابلة للاستبدال)
-        ثم _dispatch لكل عنصر.
-        """
+        """دورة واحدة: اكتشف التنبيهات المستحقة الآن وأطلقها."""
         due_items = await self._find_due_prayers()
         for target_type, target_id, info in due_items:
             await self._dispatch(target_type, target_id, info)
 
-    async def _find_due_prayers(self) -> List[_DueItem]:
+    async def _find_due_prayers(self):
         """يفحص كل الأهداف ويُرجع التنبيهات المستحقة الآن.
 
-        يمكن استبدالها (mock) في الاختبارات لعزل منطق الإرسال.
+        يستخدم جلب مجمّع لتقليل استعلامات قاعدة البيانات.
         """
-        now = datetime.utcnow()
-        results: List[_DueItem] = []
+        now = _utc_now()
+        results = []
 
-        # المستخدمون (تنبيه نصي)
-        for u in await self._user_repo.list_with_notifications():
+        users, groups = await asyncio.gather(
+            self._user_repo.list_with_notifications(),
+            self._group_repo.list_all(),
+        )
+
+        for u in users:
             due = self._check_due(
                 u.city, u.method, u.asr_method, now, u.enabled_prayers
             )
@@ -134,28 +155,23 @@ class PrayerScheduler:
                 if prelude:
                     results.append(("user", u.user_id, prelude))
 
-        # المجموعات (بث أذان)
-        for g in await self._group_repo.list_all():
+        for g in groups:
             due = self._check_due(g.city, g.method, g.asr_method, now)
             if due:
+                due["azan_source"] = g.azan_source
                 results.append(("group", g.chat_id, due))
 
         return results
 
     @staticmethod
-    def _check_due(
-        city: str,
-        method: str,
-        asr_method: str,
-        now: datetime,
-        enabled=None,
-    ) -> dict | None:
+    def _check_due(city, method, asr_method, now, enabled=None):
         """هل حان وقت صلاة الآن لهذه المدينة؟ يُرجع معلومات الصلاة أو None."""
         from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
 
         coords = CityCoordinates.get_city_coords(city)
         if not coords:
             return None
+        local_now = _city_local_now(now, coords)
         calc = PrayerTimeCalculator(
             latitude=coords["lat"],
             longitude=coords["lng"],
@@ -165,31 +181,30 @@ class PrayerScheduler:
             dst=coords.get("dst", False),
             city_name=city,
         )
-        times = calc.calculate_times(now)
-        now_hhmm = now.strftime("%H:%M")
+        times = calc.calculate_times(local_now)
+        now_hhmm = local_now.strftime("%H:%M")
         prayers = enabled or ["fajr", "dhuhr", "asr", "maghrib", "isha"]
         for p in prayers:
             if p not in times:
                 continue
             if _within(times[p], now_hhmm, tolerance=1):
-                return {"prayer": p, "time": times[p], "is_prelude": False}
+                return {
+                    "prayer": p,
+                    "time": times[p],
+                    "is_prelude": False,
+                    "date": local_now.strftime("%Y-%m-%d"),
+                }
         return None
 
     @staticmethod
-    def _check_prelude(
-        city,
-        method,
-        asr_method,
-        now,
-        enabled,
-        lead_minutes,
-    ) -> dict | None:
+    def _check_prelude(city, method, asr_method, now, enabled, lead_minutes):
         """هل اقتربت صلاة بحيث يجب إطلاق المقدمة الآن؟"""
         from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
 
         coords = CityCoordinates.get_city_coords(city)
         if not coords:
             return None
+        local_now = _city_local_now(now, coords)
         calc = PrayerTimeCalculator(
             latitude=coords["lat"],
             longitude=coords["lng"],
@@ -199,8 +214,8 @@ class PrayerScheduler:
             dst=coords.get("dst", False),
             city_name=city,
         )
-        times = calc.calculate_times(now)
-        now_hhmm = now.strftime("%H:%M")
+        times = calc.calculate_times(local_now)
+        now_hhmm = local_now.strftime("%H:%M")
         prayers = enabled or ["fajr", "dhuhr", "asr", "maghrib", "isha"]
         for p in prayers:
             if p not in times:
@@ -212,29 +227,27 @@ class PrayerScheduler:
                     "time": times[p],
                     "is_prelude": True,
                     "prelude_key": f"prelude_{p}",
+                    "date": local_now.strftime("%Y-%m-%d"),
                 }
         return None
 
     async def _dispatch(self, target_type: str, target_id: int, info: dict) -> None:
         """يُرسل تنبيهًا واحدًا مع منع التكرار ومعالجة الأخطاء."""
         prayer = info["prayer"]
-        date = datetime.utcnow().strftime("%Y-%m-%d")
+        date = info.get("date") or _utc_now().strftime("%Y-%m-%d")
         key = info.get("prelude_key", prayer)
 
         if await self._sent_repo.already_sent(target_id, target_type, key, date):
-            return  # سُبق وأُرسل
+            return
 
         try:
             if target_type == "user":
                 ok = await self._notifier.notify_user(
-                    target_id,
-                    prayer,
-                    info["time"],
-                    info.get("is_prelude", False),
+                    target_id, prayer, info["time"], info.get("is_prelude", False)
                 )
             else:
                 ok = await self._notifier.broadcast_group_azan(
-                    target_id, prayer, "traditional"
+                    target_id, prayer, info.get("azan_source", "traditional")
                 )
             if ok:
                 await self._sent_repo.mark_sent(target_id, target_type, key, date)

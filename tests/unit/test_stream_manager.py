@@ -1,9 +1,10 @@
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 
 # ===== بدائل وهمية لرموز pytgcalls =====
+
 
 class _NotInCallError(Exception):
     """بديل لpytgcalls.exceptions.NotInCallError."""
@@ -38,6 +39,7 @@ class _FakePyTgCalls:
         def deco(func):
             self._on_update = func
             return func
+
         return deco
 
 
@@ -101,12 +103,12 @@ async def test_play_retries_then_fails(manager):
 
 
 @pytest.mark.asyncio
-async def test_play_not_in_call_treated_as_success(manager):
+async def test_play_not_in_call_retries_vc(manager):
     sm, ptc = manager
     ptc.play = AsyncMock(side_effect=_NotInCallError())
     ok = await sm.play(-100, "http://x/a.mp3", "t")
-    assert ok is True
-    assert -100 in sm.active_streams()
+    assert ok is False
+    assert -100 not in sm.active_streams()
 
 
 @pytest.mark.asyncio

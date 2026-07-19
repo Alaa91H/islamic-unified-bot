@@ -285,6 +285,15 @@ $RECYCLE.BIN/
 # 📡 Misc tools
 # ---------------------------------------------------------------
 
+# Kilo (local agent config — not part of the project)
+.kilo/
+
+# Local dev/scan helper scripts (not part of the bot runtime)
+deep_scan_fix.py
+scan_issues.py
+run_tests.py
+test_pyro_types.py
+
 # Jupyter
 .ipynb_checkpoints/
 profile_default/

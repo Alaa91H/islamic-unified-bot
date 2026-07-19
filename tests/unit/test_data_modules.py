@@ -61,6 +61,7 @@ def test_prelude_sources_have_duration():
 # Quran Data module-level tests
 # ============================================================
 
+
 def test_ayah_counts_has_all_surahs():
     from bot.data.quran_data import AYAH_COUNTS
 
@@ -89,6 +90,7 @@ def test_quran_juz_mapping_has_entries():
 # ============================================================
 # Hadith Data module-level tests
 # ============================================================
+
 
 def test_hadith_books_structure():
     from bot.data.hadith_data import HADITH_BOOKS
@@ -127,9 +129,9 @@ def test_hadith_get_cached_no_file():
 
 
 def test_hadith_set_and_get_cache(tmp_path):
-    from bot.data.hadith_data import _set_cache, _get_cached, CACHE_DIR
-
     import bot.data.hadith_data as hd
+    from bot.data.hadith_data import _get_cached, _set_cache
+
     original = hd.CACHE_DIR
     hd.CACHE_DIR = tmp_path / "hadith_test_cache"
 
@@ -143,9 +145,10 @@ def test_hadith_set_and_get_cache(tmp_path):
 
 
 def test_hadith_get_hadith_unknown_book():
+    import asyncio
+
     from bot.data.hadith_data import get_hadith
 
-    import asyncio
     result = asyncio.run(get_hadith("nonexistent", 1))
     assert result is None
 
@@ -167,6 +170,7 @@ def test_format_hadith_returns_correct_format():
 # ============================================================
 # Islamic Names module-level tests
 # ============================================================
+
 
 def test_names_of_allah_count():
     from bot.data.islamic_names import NAMES_OF_ALLAH

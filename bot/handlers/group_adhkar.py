@@ -1,4 +1,5 @@
 from bot.decorators import admin_only, safe_handler
+from bot.handlers.ui import markup_with_bottom_controls
 
 _BOOL_MAP = {
     "1": True,
@@ -18,14 +19,15 @@ def _parse_bool(v: str):
 
 def register(app, deps) -> None:
     from pyrogram import filters
-    from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+    from pyrogram.types import CallbackQuery, InlineKeyboardButton
 
     from bot.db.repositories.adhkar_settings import AdhkarSettings
 
     repo = deps.adhkar_repo
+    settings = deps.settings
 
     def _settings_keyboard(s, chat_id):
-        return InlineKeyboardMarkup(
+        return markup_with_bottom_controls(
             [
                 [
                     InlineKeyboardButton(
@@ -56,12 +58,14 @@ def register(app, deps) -> None:
                         callback_data=f"adhk_toggle:friday:{chat_id}",
                     )
                 ],
-                [InlineKeyboardButton("🔒 إغلاق", callback_data="adhk_close")],
-            ]
+            ],
+            home_callback=None,
+            close_callback="adhk_close",
+            close_label="🔒 إغلاق",
         )
 
     @app.on_message(filters.group & filters.command("adhkar"))
-    @admin_only(app)
+    @admin_only(app, settings)
     @safe_handler()
     async def adhkar_cmd(client, message):
         chat_id = message.chat.id
@@ -77,7 +81,7 @@ def register(app, deps) -> None:
         )
 
     @app.on_callback_query(filters.regex("^adhk_toggle:"))
-    @admin_only(app)
+    @admin_only(app, settings)
     @safe_handler()
     async def adhk_toggle(client, cq: CallbackQuery):
         _, key, chat_id_str = cq.data.split(":")
@@ -96,7 +100,7 @@ def register(app, deps) -> None:
         await cq.answer("✅ تم التحديث")
 
     @app.on_callback_query(filters.regex("^adhk_setmin:"))
-    @admin_only(app)
+    @admin_only(app, settings)
     @safe_handler()
     async def adhk_setmin_prompt(client, cq: CallbackQuery):
         _, chat_id_str = cq.data.split(":")
@@ -106,14 +110,12 @@ def register(app, deps) -> None:
             f"⏱ **المدة الحالية**: {s.interval_minutes} دقيقة\n\n"
             "أرسل عدد الدقائق الجديد (مثال: `30`)\n"
             "أو أرسل `/cancel` للإلغاء",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🔙 رجوع", callback_data=f"adhk_back:{chat_id}"
-                        )
-                    ]
-                ]
+            reply_markup=markup_with_bottom_controls(
+                [],
+                back_callback=f"adhk_back:{chat_id}",
+                home_callback=None,
+                close_callback="adhk_close",
+                close_label="🔒 إغلاق",
             ),
         )
 

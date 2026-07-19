@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly cleanup timer for Islamic Unified Bot
+
+[Timer]
+# كل يوم سبت الساعة 04:00 (بعد التحديث بساعة)
+OnCalendar=Sat *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=1800
+Unit=islamic-bot-cleanup.service
+
+[Install]
+WantedBy=timers.target

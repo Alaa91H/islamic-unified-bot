@@ -1,0 +1,37 @@
+# docker-compose.yml — Islamic Unified Bot
+# مُحسّن لخادم Oracle Cloud المجاني (1GB RAM)
+services:
+  islamic-bot:
+    build: .
+    image: islamic-unified-bot:latest
+    container_name: islamic-bot
+    restart: unless-stopped
+    env_file: .env
+    # حدود الموارد — تتناسب مع خادم 1GB RAM
+    # نترك ~300MB للنظام والمضيف + ffmpeg أثناء البث
+    mem_limit: 700m
+    memswap_limit: 1100m
+    mem_reservation: 400m
+    cpus: "1.0"
+    volumes:
+      - ./logs:/app/logs
+      - ./azan_data:/app/azan_data
+      - ./data:/app/data
+      - ./music:/app/music
+    # سجل الخرج محدود الحجم لمنع امتلاء القرص
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # صحة الحاوية — يفحص ملف heartbeat يُحدّثه البوت كل بضع دقائق
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,time; assert time.time()-os.path.getmtime('/app/.health')<300"
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s

@@ -1,0 +1,21 @@
+# ============================================================================
+# crontab.txt — جدولة بديلة (اختياري) لمن لا يستخدم systemd timers
+#
+# الطريقة الموصى بها على Oracle Cloud هي systemd timers (تُثبَّت تلقائيًا
+# عبر scripts/install.sh). هذه ملف crontab بديل للأنظمة بدون systemd.
+#
+# للتثبيت (كـ root):
+#   crontab scripts/crontab.txt
+#
+# ملاحظة: لا تستخدم هذا و systemd timers معًا — اختر أحدهما فقط.
+# ============================================================================
+
+# التحديث الأسبوعي: كل سبت 03:00 صباحًا
+0 3 * * 6 /opt/islamic-unified-bot/scripts/weekly-update.sh
+
+# التنظيف الأسبوعي: كل سبت 04:00 صباحًا (بعد التحديث)
+0 4 * * 6 /opt/islamic-unified-bot/scripts/cleanup.sh
+
+# فحص صحة البوت كل 5 دقائق وإعادة تشغيله إن كان متوقفًا
+# (احتياط إضافي — systemd يعالج هذا عادةً عبر Restart=on-failure)
+*/5 * * * * systemctl is-active --quiet islamic-bot || systemctl start islamic-bot

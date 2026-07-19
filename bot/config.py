@@ -111,7 +111,14 @@ class Settings:
     log_format: str = "text"
 
     # --- الجدولة ---
-    scheduler_tick_seconds: int = 30
+    scheduler_tick_seconds: int = 60
+
+    # --- Weak server optimizations ---
+    db_pool_size: int = 3
+    api_timeout: int = 5
+    cache_ttl: int = 3600
+    max_concurrent_streams: int = 2
+    lightweight_mode: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -169,7 +176,12 @@ class Settings:
             debug_mode=_get_bool("DEBUG_MODE", False),
             log_level=_get_str("LOG_LEVEL", "INFO"),
             log_format=_get_str("LOG_FORMAT", "text"),
-            scheduler_tick_seconds=_get_int("SCHEDULER_TICK_SECONDS", 30),
+            scheduler_tick_seconds=_get_int("SCHEDULER_TICK_SECONDS", 60),
+            db_pool_size=_get_int("DB_POOL_SIZE", 3),
+            api_timeout=_get_int("API_TIMEOUT", 5),
+            cache_ttl=_get_int("CACHE_TTL", 3600),
+            max_concurrent_streams=_get_int("MAX_CONCURRENT_STREAMS", 2),
+            lightweight_mode=_get_bool("LIGHTWEIGHT_MODE", True),
         )
 
     def is_owner(self, user_id: int) -> bool:

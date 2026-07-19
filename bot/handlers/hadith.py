@@ -1,15 +1,45 @@
 from bot.decorators import safe_handler
+from bot.handlers.ui import with_bottom_controls
 
 
 def register(app, deps) -> None:
     from pyrogram import filters
     from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-    from bot.data.hadith_data import HADITH_BOOKS, format_hadith, get_hadith
-
     @app.on_message(filters.private & filters.command("hadith"))
     @safe_handler()
     async def hadith_cmd(client, message):
+        from bot.data.hadith_data import HADITH_BOOKS, format_hadith, get_hadith
+
+        parts = message.text.split()
+        if len(parts) >= 3:
+            book = parts[1].lower()
+            try:
+                number = int(parts[2])
+            except ValueError:
+                await message.reply_text(
+                    "❌ استخدم: `/hadith [كتاب] [رقم]`\nمثال: `/hadith bukhari 1`"
+                )
+                return
+            hadith = await get_hadith(book, number)
+            if hadith:
+                await message.reply_text(format_hadith(hadith))
+            else:
+                await message.reply_text("❌ لم يتم العثور على الحديث")
+            return
+
+        if len(parts) == 2:
+            book = parts[1].lower()
+            if book in HADITH_BOOKS:
+                info = HADITH_BOOKS[book]
+                await message.reply_text(
+                    f"📚 **{info['name']}**\n───\n"
+                    f"• العدد الإجمالي: {info['total']:,}\n"
+                    f"• لعرض حديث: `/hadith {book} [رقم]`\n"
+                    f"مثال: `/hadith {book} 1`"
+                )
+                return
+
         buttons = []
         for key, info in HADITH_BOOKS.items():
             buttons.append(
@@ -21,8 +51,8 @@ def register(app, deps) -> None:
                 ]
             )
         buttons.append([InlineKeyboardButton("🔍 بحث", callback_data="hadith:search")])
-        buttons.append(
-            [InlineKeyboardButton("🔙 الرئيسية", callback_data="back_to_start")]
+        buttons = with_bottom_controls(
+            buttons, back_callback="back_to_start", home_callback=None
         )
 
         await message.reply_text(
@@ -33,6 +63,8 @@ def register(app, deps) -> None:
     @app.on_callback_query(filters.regex("^hadith:"))
     @safe_handler()
     async def hadith_callback(client, cq: CallbackQuery):
+        from bot.data.hadith_data import HADITH_BOOKS, format_hadith, get_hadith
+
         parts = cq.data.split(":")
         action = parts[1]
 
@@ -74,8 +106,8 @@ def register(app, deps) -> None:
             buttons.append(
                 [InlineKeyboardButton("🔙 الكتب", callback_data="hadith:books")]
             )
-            buttons.append(
-                [InlineKeyboardButton("🔙 الرئيسية", callback_data="back_to_start")]
+            buttons = with_bottom_controls(
+                buttons, back_callback="back_to_start", home_callback=None
             )
 
             await cq.message.edit_text(
@@ -97,8 +129,8 @@ def register(app, deps) -> None:
             buttons.append(
                 [InlineKeyboardButton("🔍 بحث", callback_data="hadith:search")]
             )
-            buttons.append(
-                [InlineKeyboardButton("🔙 الرئيسية", callback_data="back_to_start")]
+            buttons = with_bottom_controls(
+                buttons, back_callback="back_to_start", home_callback=None
             )
             await cq.message.edit_text(
                 "📚 **مكتبة الحديث الشريف**\n───\nاختر كتاباً:",
@@ -118,16 +150,20 @@ def register(app, deps) -> None:
             info = HADITH_BOOKS.get(book, {})
             buttons = [
                 [
-                    InlineKeyboardButton(
-                        "⬅️ السابق", callback_data=f"hadith:get:{book}:{number - 1}"
-                    )
-                    if number > 1
-                    else None,
-                    InlineKeyboardButton(
-                        "التالي ➡️", callback_data=f"hadith:get:{book}:{number + 1}"
-                    )
-                    if number < (info.get("total", 0))
-                    else None,
+                    (
+                        InlineKeyboardButton(
+                            "⬅️ السابق", callback_data=f"hadith:get:{book}:{number - 1}"
+                        )
+                        if number > 1
+                        else None
+                    ),
+                    (
+                        InlineKeyboardButton(
+                            "التالي ➡️", callback_data=f"hadith:get:{book}:{number + 1}"
+                        )
+                        if number < (info.get("total", 0))
+                        else None
+                    ),
                 ],
                 [
                     InlineKeyboardButton(
@@ -138,6 +174,9 @@ def register(app, deps) -> None:
                 [InlineKeyboardButton("🔙 الكتب", callback_data="hadith:books")],
             ]
             buttons = [[b for b in row if b] for row in buttons if any(b for b in row)]
+            buttons = with_bottom_controls(
+                buttons, back_callback="back_to_start", home_callback=None
+            )
             await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
             await cq.answer()
 
@@ -190,37 +229,3 @@ def register(app, deps) -> None:
 
         elif action == "_":
             await cq.answer()
-
-    @app.on_message(filters.private & filters.command("hadith"))
-    @safe_handler()
-    async def hadith_inline(client, message):
-        parts = message.text.split()
-        if len(parts) == 3:
-            book = parts[1].lower()
-            try:
-                number = int(parts[2])
-            except ValueError:
-                await message.reply_text(
-                    "❌ استخدم: `/hadith [كتاب] [رقم]`\nمثال: `/hadith bukhari 1`"
-                )
-                return
-
-            hadith = await get_hadith(book, number)
-            if hadith:
-                await message.reply_text(format_hadith(hadith))
-            else:
-                await message.reply_text("❌ لم يتم العثور على الحديث")
-
-        elif len(parts) == 2:
-            book = parts[1].lower()
-            if book in HADITH_BOOKS:
-                info = HADITH_BOOKS[book]
-                await message.reply_text(
-                    f"📚 **{info['name']}**\n───\n"
-                    f"• العدد الإجمالي: {info['total']:,}\n"
-                    f"• لعرض حديث: `/hadith {book} [رقم]`\n"
-                    f"مثال: `/hadith {book} 1`"
-                )
-            else:
-                books = "، ".join(HADITH_BOOKS.keys())
-                await message.reply_text(f"❌ كتاب غير معروف. الكتب المتاحة: {books}")

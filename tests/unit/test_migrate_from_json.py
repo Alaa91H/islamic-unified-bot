@@ -1,4 +1,5 @@
 import json
+
 import pytest
 
 
@@ -13,12 +14,18 @@ async def test_migrate_imports_existing_users(tmp_path):
         json.dumps(
             {
                 "111": {
-                    "user_id": 111, "city": "مكة المكرمة", "method": "makkah",
-                    "timezone": 3, "asr_method": "standard",
+                    "user_id": 111,
+                    "city": "مكة المكرمة",
+                    "method": "makkah",
+                    "timezone": 3,
+                    "asr_method": "standard",
                 },
                 "222": {
-                    "user_id": 222, "city": "القاهرة", "method": "egypt",
-                    "timezone": 2, "asr_method": "standard",
+                    "user_id": 222,
+                    "city": "القاهرة",
+                    "method": "egypt",
+                    "timezone": 2,
+                    "asr_method": "standard",
                 },
             },
             ensure_ascii=False,
@@ -50,9 +57,7 @@ async def test_migrate_no_file_returns_zero(tmp_path):
 
     db = Database(str(tmp_path / "t.db"))
     await db.connect()
-    imported = await migrate_from_json(
-        tmp_path / "missing.json", UserSettingsRepo(db)
-    )
+    imported = await migrate_from_json(tmp_path / "missing.json", UserSettingsRepo(db))
     assert imported == 0
     await db.close()
 
@@ -84,7 +89,10 @@ async def test_migrate_skips_invalid_records_continues(tmp_path):
         json.dumps(
             {
                 "5": {
-                    "user_id": 5, "city": "جدة", "method": "isna", "timezone": 3,
+                    "user_id": 5,
+                    "city": "جدة",
+                    "method": "isna",
+                    "timezone": 3,
                 },
                 "bad": {"city": "x"},
             },
@@ -113,8 +121,11 @@ async def test_migrate_preserves_notification_flags(tmp_path):
         json.dumps(
             {
                 "1": {
-                    "user_id": 1, "city": "مكة المكرمة", "timezone": 3,
-                    "notification_enabled": False, "prelude_enabled": True,
+                    "user_id": 1,
+                    "city": "مكة المكرمة",
+                    "timezone": 3,
+                    "notification_enabled": False,
+                    "prelude_enabled": True,
                     "prelude_time": 15,
                 }
             },

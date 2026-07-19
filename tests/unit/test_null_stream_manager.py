@@ -1,7 +1,6 @@
 """اختبارات NullStreamManager — مدير البث الفارغ (no-op)."""
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 @pytest.mark.asyncio

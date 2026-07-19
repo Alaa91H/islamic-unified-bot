@@ -1,27 +1,62 @@
 [Unit]
 Description=Islamic Unified Bot - Pyrogram Telegram Bot
-After=network.target
-Wants=islamic-bot-update.timer
+Documentation=https://github.com/Alaa91H/islamic-unified-bot
+After=network-online.target
+Wants=network-online.target islamic-bot-update.timer
+After=islamic-bot-update.service
 
 [Service]
 Type=simple
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/opt/islamic-unified-bot
+EnvironmentFile=/opt/islamic-unified-bot/.env
 ExecStart=/opt/islamic-unified-bot/venv/bin/python main.py
+
+# إعادة تشغيل ذكية مع backoff لمنع إجهاد المعالج على الخوادم الضعيفة
 Restart=on-failure
 RestartSec=5
-RestartSteps=3
-RestartMaxDelaySec=30
+RestartSteps=5
+RestartMaxDelaySec=60
 
-# حماية الذاكرة
+# حدود الذاكرة — مصممة لخادم Oracle المجاني (1GB RAM)
+# نترك 300MB للنظام، و swap إضافي لاستيعاب ffmpeg أثناء البث
 MemoryMax=700M
 MemoryHigh=600M
-OOMScoreAdjust=-100
+MemorySwapMax=400M
 
-# استقرار الخدمة
+# أولوية منخفضة لـ OOM killer (القيمة السالبة = حماية أعلى للخدمة الحرجة)
+OOMScoreAdjust=-500
+
+# حدود الملفات والعمليات
 LimitNOFILE=65536
-LimitNPROC=4096
+LimitNPROC=2048
+
+# مهلة إقلاع وإيقاف معقولة
+TimeoutStartSec=60
+TimeoutStopSec=30
+KillSignal=SIGINT
+FinalKillSignal=SIGKILL
+
+# تقوية أمنية (hardening) — خيارات آمنة لا تكسر py-tgcalls/ffmpeg
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RemoveIPC=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+# تسجيل الخرج إلى journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=islamic-bot
 
 [Install]
 WantedBy=multi-user.target

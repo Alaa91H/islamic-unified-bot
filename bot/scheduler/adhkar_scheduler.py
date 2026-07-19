@@ -2,17 +2,13 @@ import asyncio
 import contextlib
 import logging
 import random
-from datetime import datetime, timezone
-
-from bot.data.adhkar import ADHKAR
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
-_CATEGORY_KEYS = list(ADHKAR.keys())
-
-_MORNING_CATEGORIES = ["morning"]
-_EVENING_CATEGORIES = ["evening"]
-_FRIDAY_CATEGORIES = ["morning", "supplication", "protection", "gratitude"]
+MAX_CONSECUTIVE_FAILURES = 3
+BASE_BACKOFF_SECONDS = 10
+MAX_BACKOFF_SECONDS = 300
 
 
 def _now_hhmm() -> str:
@@ -27,9 +23,37 @@ def _is_friday() -> bool:
     return datetime.now(timezone.utc).weekday() == 4
 
 
-def _pick_random_item(categories: list[str]):
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _city_local_now(now_utc: datetime, coords: dict) -> datetime:
+    tz_hours = float(coords.get("tz") or 0)
+    if coords.get("dst", False):
+        tz_hours += 1
+    return now_utc + timedelta(hours=tz_hours)
+
+
+def _get_adhkar():
+    from bot.data.adhkar import ADHKAR
+
+    return ADHKAR
+
+
+def _get_category_keys():
+    adhkar = _get_adhkar()
+    return list(adhkar.keys())
+
+
+_MORNING_CATEGORIES = ["morning"]
+_EVENING_CATEGORIES = ["evening"]
+_FRIDAY_CATEGORIES = ["morning", "supplication", "protection", "gratitude"]
+
+
+def _pick_random_item(categories: list):
+    adhkar = _get_adhkar()
     category = random.choice(categories)
-    items = ADHKAR.get(category, [])
+    items = adhkar.get(category, [])
     if not items:
         return None, None
     item = random.choice(items)
@@ -44,12 +68,14 @@ def _format_adhkar(item: dict) -> str:
 
 
 class AdhkarScheduler:
-    def __init__(self, adhkar_repo, app, tick_seconds: int = 30):
+    def __init__(self, adhkar_repo, app, tick_seconds: int = 60, group_repo=None):
         self._repo = adhkar_repo
         self._app = app
+        self._group_repo = group_repo
         self.TICK_SECONDS = tick_seconds
-        self._task: asyncio.Task | None = None
+        self._task = None
         self._running = False
+        self._consecutive_failures = 0
 
     async def start(self) -> None:
         if self._task is not None:
@@ -71,14 +97,35 @@ class AdhkarScheduler:
         while self._running:
             try:
                 await self.tick()
+                self._consecutive_failures = 0
             except Exception:
-                logger.exception("⚠️ خطأ في دورة الأذكار (ستستأنف)")
-            await asyncio.sleep(self.TICK_SECONDS)
+                self._consecutive_failures += 1
+                logger.exception(
+                    "⚠️ خطأ في دورة الأذكار (%d/%d)",
+                    self._consecutive_failures,
+                    MAX_CONSECUTIVE_FAILURES,
+                )
+            jitter = random.uniform(-0.25, 0.25) * self.TICK_SECONDS
+            sleep_time = self.TICK_SECONDS + jitter
+            if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                backoff = min(
+                    BASE_BACKOFF_SECONDS
+                    * (2 ** (self._consecutive_failures - MAX_CONSECUTIVE_FAILURES)),
+                    MAX_BACKOFF_SECONDS,
+                )
+                sleep_time += backoff
+                logger.warning(
+                    "🔁 adhkar circuit breaker: زيادة النوم %dث", int(sleep_time)
+                )
+            try:
+                await asyncio.sleep(sleep_time)
+            except asyncio.CancelledError:
+                break
 
     async def tick(self) -> None:
-        now_hhmm = _now_hhmm()
-        today = _today_str()
-        for s in await self._repo.list_all():
+        now_utc = _utc_now()
+        all_settings = await self._repo.list_all()
+        for s in all_settings:
             if not (
                 s.interval_enabled
                 or s.morning_enabled
@@ -87,38 +134,70 @@ class AdhkarScheduler:
             ):
                 continue
             try:
-                await self._check_group(s, now_hhmm, today)
+                local_now = await self._local_now_for_group(s.chat_id, now_utc)
+                await self._check_group(
+                    s,
+                    local_now.strftime("%H:%M"),
+                    local_now.strftime("%Y-%m-%d"),
+                    now_utc,
+                    local_now,
+                )
             except Exception:
                 logger.exception("⚠️ خطأ في أذكار المجموعة %s", s.chat_id)
 
-    async def _check_group(self, s, now_hhmm: str, today: str) -> None:
-        chat_id = s.chat_id
+    async def _local_now_for_group(self, chat_id: int, now_utc: datetime) -> datetime:
+        if self._group_repo is None:
+            return now_utc
+        try:
+            group_settings = await self._group_repo.get(chat_id)
+        except Exception:
+            logger.warning("⚠️ تعذّر جلب توقيت مجموعة الأذكار %s", chat_id)
+            return now_utc
+        if not group_settings:
+            return now_utc
+        from bot.prayer.calculator import CityCoordinates
 
-        # الأذكار الدورية
+        coords = CityCoordinates.get_city_coords(group_settings.city)
+        if not coords:
+            return now_utc
+        return _city_local_now(now_utc, coords)
+
+    async def _check_group(
+        self,
+        s,
+        now_hhmm: str,
+        today: str,
+        now_utc: datetime = None,
+        local_now: datetime = None,
+    ) -> None:
+        chat_id = s.chat_id
+        now_utc = now_utc or _utc_now()
+        local_now = local_now or now_utc
+
         if s.interval_enabled and s.last_sent_at:
             try:
-                last = datetime.strptime(s.last_sent_at, "%Y-%m-%d %H:%M")
-                elapsed = (datetime.now(timezone.utc) - last).total_seconds() / 60
+                last = datetime.strptime(s.last_sent_at, "%Y-%m-%d %H:%M").replace(
+                    tzinfo=timezone.utc
+                )
+                elapsed = (now_utc - last).total_seconds() / 60
             except (ValueError, TypeError):
                 elapsed = s.interval_minutes + 1
             if elapsed >= s.interval_minutes:
-                await self._send_adhkar(chat_id, _CATEGORY_KEYS)
+                await self._send_adhkar(chat_id, _get_category_keys())
                 await self._repo.update_partial(
                     chat_id,
-                    last_sent_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                    last_sent_at=now_utc.strftime("%Y-%m-%d %H:%M"),
                 )
                 return
 
-        # أول تفعيل للدوري — نرسل فوراً (إذا ما أُرسل شيء قبل)
         if s.interval_enabled and not s.last_sent_at:
-            await self._send_adhkar(chat_id, _CATEGORY_KEYS)
+            await self._send_adhkar(chat_id, _get_category_keys())
             await self._repo.update_partial(
                 chat_id,
-                last_sent_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                last_sent_at=now_utc.strftime("%Y-%m-%d %H:%M"),
             )
             return
 
-        # أذكار الصباح
         if s.morning_enabled and now_hhmm == s.morning_time:
             sent_key = f"adhkar_morning_{today}"
             if not await self._already_sent_today(chat_id, sent_key):
@@ -127,7 +206,6 @@ class AdhkarScheduler:
                 )
                 await self._mark_sent(chat_id, sent_key)
 
-        # أذكار المساء
         if s.evening_enabled and now_hhmm == s.evening_time:
             sent_key = f"adhkar_evening_{today}"
             if not await self._already_sent_today(chat_id, sent_key):
@@ -136,8 +214,7 @@ class AdhkarScheduler:
                 )
                 await self._mark_sent(chat_id, sent_key)
 
-        # أذكار الجمعة
-        if s.friday_enabled and _is_friday() and now_hhmm == s.friday_time:
+        if s.friday_enabled and local_now.weekday() == 4 and now_hhmm == s.friday_time:
             sent_key = f"adhkar_friday_{today}"
             if not await self._already_sent_today(chat_id, sent_key):
                 await self._send_adhkar(
@@ -145,9 +222,7 @@ class AdhkarScheduler:
                 )
                 await self._mark_sent(chat_id, sent_key)
 
-    async def _send_adhkar(
-        self, chat_id: int, categories: list[str], header: str = None
-    ) -> None:
+    async def _send_adhkar(self, chat_id: int, categories: list, header: str = None):
         category, item = _pick_random_item(categories)
         if not item:
             return

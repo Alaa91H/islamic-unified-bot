@@ -1,6 +1,7 @@
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -13,8 +14,9 @@ def _event_loop():
 
 class TestAzanKeyboards:
     def test_city_selection_keyboard_returns_markup(self):
-        from bot.handlers.azan import city_selection_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.azan import city_selection_keyboard
 
         markup = city_selection_keyboard()
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -22,8 +24,9 @@ class TestAzanKeyboards:
         assert "🔙" in markup.inline_keyboard[-1][0].text
 
     def test_method_selection_keyboard_returns_markup(self):
-        from bot.handlers.azan import method_selection_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.azan import method_selection_keyboard
 
         markup = method_selection_keyboard("مكة المكرمة")
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -31,8 +34,9 @@ class TestAzanKeyboards:
         assert "كراتشي" in markup.inline_keyboard[0][0].text
 
     def test_settings_keyboard_returns_markup(self):
-        from bot.handlers.azan import settings_keyboard
         from pyrogram.types import InlineKeyboardMarkup
+
+        from bot.handlers.azan import settings_keyboard
 
         markup = settings_keyboard()
         assert isinstance(markup, InlineKeyboardMarkup)
@@ -79,10 +83,16 @@ class TestAzanHandlersRegistration:
 
         app = self._make_mock_app()
         deps = self._make_deps()
-        deps.user_repo.get = AsyncMock(return_value=MagicMock(
-            city="مكة المكرمة", method="isna", asr_method="standard",
-            notifications_on=True, prelude_on=True, prelude_minutes=10,
-        ))
+        deps.user_repo.get = AsyncMock(
+            return_value=MagicMock(
+                city="مكة المكرمة",
+                method="isna",
+                asr_method="standard",
+                notifications_on=True,
+                prelude_on=True,
+                prelude_minutes=10,
+            )
+        )
         register(app, deps)
 
     @pytest.mark.asyncio

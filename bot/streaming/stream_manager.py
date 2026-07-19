@@ -29,6 +29,14 @@ def _import_pytgcalls():
     return PyTgCalls, NotInCallError, AudioQuality, MediaStream
 
 
+async def _ensure_group_call(app, chat_id: int) -> bool:
+    """البوت لا يستطيع إنشاء مكالمة صوتية — يجب على المشرف بدؤها يدويًا."""
+    logger.info(
+        "ℹ️ المكالمة غير موجودة في %s — يجب على المشرف إنشاء مكالمة صوتية أولاً", chat_id
+    )
+    return False
+
+
 class StreamManager:
     """بث صوتي مع reconnect محدود ومهلة قصوى."""
 
@@ -116,8 +124,15 @@ class StreamManager:
         try:
             await self.pytgcalls.play(chat_id, media)
         except NotInCallError:
-            logger.info("ℹ️ البوت يبث بالفعل في %s", chat_id)
+            logger.info("ℹ️ لا توجد مكالمة في %s — يجب إنشاؤها يدويًا", chat_id)
+            return False
         except Exception as e:
+            err_str = str(e)
+            if "BOT_METHOD_INVALID" in err_str or "NotInCallError" in err_str:
+                logger.info(
+                    "ℹ️ البوت لا يستطيع إنشاء المكالمة — يجب على المشرف بدؤها يدويًا"
+                )
+                return False
             if attempts < self.max_reconnect:
                 delay = self.base_delay * (2**attempts) + random.uniform(0, 1)
                 logger.error(

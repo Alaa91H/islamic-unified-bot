@@ -45,8 +45,9 @@ async def test_upsert_is_update(repo):
     from bot.db.repositories.group_settings import GroupSettings
 
     await repo.upsert(GroupSettings(chat_id=-1, city="جدة"))
-    await repo.upsert(GroupSettings(chat_id=-1, city="مكة المكرمة",
-                                   azan_source="abdul_basit"))
+    await repo.upsert(
+        GroupSettings(chat_id=-1, city="مكة المكرمة", azan_source="abdul_basit")
+    )
     got = await repo.get(-1)
     assert got.city == "مكة المكرمة"
     assert got.azan_source == "abdul_basit"

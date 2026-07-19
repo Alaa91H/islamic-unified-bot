@@ -1,10 +1,14 @@
 [Unit]
-Description=Weekly update timer for Islamic Unified Bot
+Description=Weekly auto-update for Islamic Unified Bot (system + code + deps)
 
 [Timer]
-OnCalendar=weekly
+# كل يوم سبت الساعة 03:00 — وقت منخفض الحِمل عادةً
+OnCalendar=Sat *-*-* 03:00:00
 Persistent=true
+# عشوائية حتى ساعة لتجنّب التزامن مع مهام أخرى
 RandomizedDelaySec=3600
+# إذا فاتت الدورة (الخادم كان مطفأً) شغّلها فور الإقلاع
+Unit=islamic-bot-update.service
 
 [Install]
 WantedBy=timers.target

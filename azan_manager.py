@@ -10,8 +10,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,30 +22,27 @@ class NotificationType(Enum):
     STREAM_STOP = "إيقاف البث"
 
 
-@dataclass
+@dataclass(slots=True)
 class UserAzanSettings:
     """إعدادات الأذان للمستخدم"""
 
     user_id: int
     city: str
-    method: str = "isna"  # طريقة الحساب
+    method: str = "isna"
     timezone: int = 0
     asr_method: str = "standard"
 
-    # إعدادات التنبيهات
-    enabled_prayers: List[str] = None  # الصلوات المفعلة
+    enabled_prayers: List[str] = None
     notification_enabled: bool = True
-    prelude_enabled: bool = False  # تنبيه قبل الأذان
-    prelude_time: int = 5  # بالدقائق
+    prelude_enabled: bool = False
+    prelude_time: int = 5
 
-    # إعدادات البث
     stream_enabled: bool = False
-    stream_url: str = ""  # رابط الأذان الصوتي
-    stream_prelude_url: str = ""  # رابط المقدمة
-    stream_stop_before: int = 0  # إيقاف البث قبل الأذان (بالثواني)
-    stream_duration: int = 120  # مدة البث (بالثواني)
+    stream_url: str = ""
+    stream_prelude_url: str = ""
+    stream_stop_before: int = 0
+    stream_duration: int = 120
 
-    # إعدادات إضافية
     language: str = "ar"
     timezone_name: str = "UTC"
     use_hijri_calendar: bool = True
@@ -57,7 +52,6 @@ class UserAzanSettings:
             self.enabled_prayers = ["fajr", "dhuhr", "asr", "maghrib", "isha"]
 
     def to_dict(self) -> Dict:
-        """تحويل إلى قاموس"""
         return asdict(self)
 
 
@@ -73,7 +67,6 @@ class AzanScheduler:
         self.load_settings()
 
     def load_settings(self):
-        """تحميل إعدادات المستخدمين"""
         if self.settings_file.exists():
             try:
                 with open(self.settings_file, "r", encoding="utf-8") as f:
@@ -86,7 +79,6 @@ class AzanScheduler:
                 logger.error(f"خطأ في تحميل الإعدادات: {e}")
 
     def save_settings(self):
-        """حفظ إعدادات المستخدمين"""
         try:
             data = {
                 str(user_id): settings.to_dict()
@@ -97,15 +89,9 @@ class AzanScheduler:
         except Exception as e:
             logger.error(f"خطأ في حفظ الإعدادات: {e}")
 
-    def add_user(
-        self,
-        user_id: int,
-        city: str,
-        method: str = "isna",
-        timezone: int = 0,
-        asr_method: str = "standard",
-    ) -> bool:
-        """إضافة مستخدم جديد"""
+    def add_user(self, user_id: int, city: str, method: str = "isna", timezone: int = 0, asr_method: str = "standard") -> bool:
+        from bot.prayer.calculator import CityCoordinates
+
         city_coords = CityCoordinates.get_city_coords(city)
         if not city_coords:
             return False
@@ -124,7 +110,6 @@ class AzanScheduler:
         return True
 
     def update_user_settings(self, user_id: int, **kwargs) -> bool:
-        """تحديث إعدادات المستخدم"""
         if user_id not in self.user_settings:
             return False
 
@@ -137,11 +122,11 @@ class AzanScheduler:
         return True
 
     def get_user_settings(self, user_id: int) -> Optional[UserAzanSettings]:
-        """الحصول على إعدادات المستخدم"""
         return self.user_settings.get(user_id)
 
     def get_prayer_times(self, user_id: int, date: datetime = None) -> Optional[Dict]:
-        """حساب أوقات الصلاة للمستخدم"""
+        from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
+
         if date is None:
             date = datetime.now()
 
@@ -171,18 +156,14 @@ class AzanScheduler:
 
         return times
 
-    async def get_prayer_times_async(
-        self, user_id: int, date: datetime = None
-    ) -> Optional[Dict]:
-        """حساب أوقات الصلاة بشكل غير متزامن"""
+    async def get_prayer_times_async(self, user_id: int, date: datetime = None) -> Optional[Dict]:
         return await asyncio.get_event_loop().run_in_executor(
             None, self.get_prayer_times, user_id, date
         )
 
-    def get_next_prayer(
-        self, user_id: int, current_time: datetime = None
-    ) -> Optional[Dict]:
-        """الحصول على الصلاة التالية"""
+    def get_next_prayer(self, user_id: int, current_time: datetime = None) -> Optional[Dict]:
+        from bot.prayer.calculator import PrayerTimeCalculator
+
         if current_time is None:
             current_time = datetime.now()
 
@@ -199,7 +180,6 @@ class AzanScheduler:
             if prayer in settings.enabled_prayers and prayer in times:
                 prayer_time = times[prayer]
                 if prayer_time > current_time_str:
-                    # حساب الدقائق المتبقية
                     prayer_h, prayer_m = map(int, prayer_time.split(":"))
                     curr_h, curr_m = map(int, current_time_str.split(":"))
                     in_minutes = (prayer_h * 60 + prayer_m) - (curr_h * 60 + curr_m)
@@ -211,7 +191,6 @@ class AzanScheduler:
                         "tomorrow": False,
                     }
 
-        # إذا لم توجد صلاة اليوم، أحسب للغد
         next_date = current_time + timedelta(days=1)
         times_next = self.get_prayer_times(user_id, next_date)
         if times_next:
@@ -227,7 +206,6 @@ class AzanScheduler:
         return None
 
     def _get_timezone_name(self, tz: int) -> str:
-        """الحصول على اسم التوقيت الزمني"""
         return f"UTC{tz:+d}"
 
 
@@ -248,13 +226,9 @@ class AzanStreamer:
         self.active_streams: Dict[int, Dict] = {}
 
     def get_azan_url(self, prayer: str, source: str = "traditional") -> Optional[str]:
-        """الحصول على رابط الأذان"""
         return self.AZAN_SOURCES.get(source, {}).get(prayer)
 
-    def add_stream(
-        self, chat_id: int, prayer: str, url: str, started_at: datetime = None
-    ) -> bool:
-        """إضافة بث جديد"""
+    def add_stream(self, chat_id: int, prayer: str, url: str, started_at: datetime = None) -> bool:
         self.active_streams[chat_id] = {
             "prayer": prayer,
             "url": url,
@@ -264,18 +238,15 @@ class AzanStreamer:
         return True
 
     def get_stream(self, chat_id: int) -> Optional[Dict]:
-        """الحصول على معلومات البث"""
         return self.active_streams.get(chat_id)
 
     def stop_stream(self, chat_id: int) -> bool:
-        """إيقاف البث"""
         if chat_id in self.active_streams:
             del self.active_streams[chat_id]
             return True
         return False
 
     def is_streaming(self, chat_id: int) -> bool:
-        """هل البث نشط؟"""
         return chat_id in self.active_streams
 
 
@@ -285,14 +256,7 @@ class AzanNotificationManager:
     def __init__(self):
         self.notification_queue: List[Dict] = []
 
-    def add_notification(
-        self,
-        user_id: int,
-        notification_type: NotificationType,
-        prayer: str,
-        scheduled_time: datetime = None,
-    ) -> Dict:
-        """إضافة تنبيه جديد"""
+    def add_notification(self, user_id: int, notification_type: NotificationType, prayer: str, scheduled_time: datetime = None) -> Dict:
         notification = {
             "id": f"{user_id}_{prayer}_{datetime.now().timestamp()}",
             "user_id": user_id,
@@ -305,11 +269,9 @@ class AzanNotificationManager:
         return notification
 
     def get_pending_notifications(self) -> List[Dict]:
-        """الحصول على التنبيهات المعلقة"""
         return [n for n in self.notification_queue if not n["sent"]]
 
     def mark_as_sent(self, notification_id: str) -> bool:
-        """وضع علامة على التنبيه كمُرسل"""
         for notification in self.notification_queue:
             if notification["id"] == notification_id:
                 notification["sent"] = True
@@ -317,6 +279,4 @@ class AzanNotificationManager:
         return False
 
     def clear_old_notifications(self, hours: int = 24):
-        """حذف التنبيهات القديمة"""
-        # تبسيط للمحاكاة في الاختبارات
         self.notification_queue = []
