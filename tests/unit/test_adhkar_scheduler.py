@@ -49,7 +49,9 @@ def test_pick_random_item_returns_item(mock_choice):
 def test_pick_random_item_empty_category():
     from bot.scheduler.adhkar_scheduler import _pick_random_item
 
-    with patch("bot.scheduler.adhkar_scheduler._get_adhkar", return_value={"empty_cat": []}):
+    with patch(
+        "bot.scheduler.adhkar_scheduler._get_adhkar", return_value={"empty_cat": []}
+    ):
         category, item = _pick_random_item(["empty_cat"])
         assert category is None
         assert item is None

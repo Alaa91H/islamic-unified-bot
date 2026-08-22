@@ -1,3 +1,5 @@
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 
@@ -69,6 +71,35 @@ def test_from_env_applies_defaults(monkeypatch):
     assert s.db_path == "./data/bot.db"
 
 
+def test_miniapp_api_requires_exact_https_origin(monkeypatch):
+    from bot.config import Settings
+
+    monkeypatch.setenv("BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("API_ID", "123456")
+    monkeypatch.setenv("API_HASH", "abcdef")
+    monkeypatch.setenv("OWNER_ID", "1")
+    monkeypatch.setenv("MINIAPP_API_ENABLED", "true")
+    monkeypatch.setenv("MINIAPP_ALLOWED_ORIGIN", "http://miniapp.example.com")
+
+    with pytest.raises(ValueError, match="MINIAPP_ALLOWED_ORIGIN"):
+        Settings.from_env()
+
+
+def test_miniapp_api_rejects_public_bind_address(monkeypatch):
+    from bot.config import Settings
+
+    monkeypatch.setenv("BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("API_ID", "123456")
+    monkeypatch.setenv("API_HASH", "abcdef")
+    monkeypatch.setenv("OWNER_ID", "1")
+    monkeypatch.setenv("MINIAPP_API_ENABLED", "true")
+    monkeypatch.setenv("MINIAPP_ALLOWED_ORIGIN", "https://miniapp.example.com")
+    monkeypatch.setenv("MINIAPP_API_HOST", "0.0.0.0")
+
+    with pytest.raises(ValueError, match="MINIAPP_API_HOST"):
+        Settings.from_env()
+
+
 def test_is_owner_true_only_for_owner():
     from bot.config import Settings
 
@@ -81,5 +112,5 @@ def test_settings_is_frozen():
     from bot.config import Settings
 
     s = Settings(bot_token="1:ABC", api_id=1, api_hash="h", owner_id=1)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         s.bot_token = "mutated"  # type: ignore[misc]

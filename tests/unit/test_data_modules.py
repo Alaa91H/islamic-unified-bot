@@ -96,7 +96,7 @@ def test_hadith_books_structure():
     from bot.data.hadith_data import HADITH_BOOKS
 
     assert len(HADITH_BOOKS) == 6
-    for key, info in HADITH_BOOKS.items():
+    for _key, info in HADITH_BOOKS.items():
         assert "name" in info
         assert "api_id" in info
         assert "total" in info

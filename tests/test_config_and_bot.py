@@ -7,7 +7,6 @@ import pytest
 
 
 class TestConfigValidation:
-
     def test_missing_bot_token_raises(self, monkeypatch):
         monkeypatch.setenv("BOT_TOKEN", "")
         monkeypatch.setenv("API_ID", "12345")
@@ -64,7 +63,6 @@ class TestConfigValidation:
 
 
 class TestNullStreamManager:
-
     def setup_method(self):
         from bot.streaming.null_stream_manager import NullStreamManager
 
@@ -105,7 +103,6 @@ class TestNullStreamManager:
 
 
 class TestIslamicDataClass:
-
     def setup_method(self):
         from bot.data.adhkar import ADHKAR, ADHKAR_CATEGORIES
         from bot.data.surahs import SURAHS
@@ -134,9 +131,9 @@ class TestIslamicDataClass:
     def test_surahs_keys_1_to_114(self):
         keys = set(self.SURAHS.keys())
         expected = set(range(1, 115))
-        assert (
-            keys == expected
-        ), f"Unexpected surah keys: {keys.symmetric_difference(expected)}"
+        assert keys == expected, (
+            f"Unexpected surah keys: {keys.symmetric_difference(expected)}"
+        )
 
     def test_surah_names_non_empty_strings(self):
         for num, name in self.SURAHS.items():

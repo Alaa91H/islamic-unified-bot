@@ -176,11 +176,20 @@ async def main():
                     port=settings.miniapp_api_port,
                     log_level=settings.log_level.lower(),
                     access_log=False,
+                    server_header=False,
+                    date_header=False,
+                    limit_concurrency=settings.miniapp_api_concurrency_limit,
+                    timeout_graceful_shutdown=10,
                 )
             )
-            miniapp_api_task = asyncio.create_task(miniapp_api_server.serve())
+            miniapp_api_task = asyncio.create_task(
+                miniapp_api_server.serve(), name="miniapp-api-server"
+            )
+            await asyncio.sleep(0)
+            if miniapp_api_task.done():
+                raise RuntimeError("تعذر بدء API Mini App")
             logger.info(
-                "✅ API Mini App تعمل على %s:%s",
+                "✅ API Mini App تعمل محليًا على %s:%s",
                 settings.miniapp_api_host,
                 settings.miniapp_api_port,
             )

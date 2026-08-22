@@ -5,6 +5,7 @@ Tests to boost coverage for the new bot structure
 
 import os
 import tempfile
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -52,7 +53,7 @@ class TestSettings:
         from bot.config import Settings
 
         settings = Settings.from_env()
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             settings.bot_token = "new"
 
 
@@ -108,7 +109,7 @@ class TestIslamicData:
     def test_each_adhkar_item_structure(self):
         from bot.data.adhkar import ADHKAR
 
-        for cat, items in ADHKAR.items():
+        for _category, items in ADHKAR.items():
             for item in items:
                 assert "title" in item
                 assert "text" in item
@@ -117,8 +118,8 @@ class TestIslamicData:
     def test_categories_values_are_strings(self):
         from bot.data.adhkar import ADHKAR_CATEGORIES
 
-        for k, v in ADHKAR_CATEGORIES.items():
-            assert isinstance(v, str) and len(v) > 0
+        for _key, value in ADHKAR_CATEGORIES.items():
+            assert isinstance(value, str) and len(value) > 0
 
 
 # ============================================================

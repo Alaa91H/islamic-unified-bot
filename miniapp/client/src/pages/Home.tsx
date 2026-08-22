@@ -1,6 +1,6 @@
 /**
  * تصميم «محراب اليوم»: طبقات هادئة، قوس للمعلومة الأهم، ونحاس المحراب للإجراء.
- * الواجهة RTL أولًا وتستخدم حالة محلية قابلة للاستبدال بطبقة API موثقة لاحقًا.
+ * الواجهة RTL أولًا؛ تحفظ عبر API موثقة عند تهيئتها وتبقى متوافقة مع sendData.
  */
 import {
   BellRing,
@@ -13,7 +13,7 @@ import {
   Settings2,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TelegramWebApp = {
   ready: () => void;
@@ -22,6 +22,7 @@ type TelegramWebApp = {
     setText: (text: string) => void;
     show: () => void;
     onClick: (listener: () => void) => void;
+    offClick?: (listener: () => void) => void;
   };
   sendData?: (payload: string) => void;
   initData?: string;
@@ -42,11 +43,16 @@ const prayers = [
   { name: "العشاء", time: "20:00", icon: "☾" },
 ];
 
+const API_BASE = import.meta.env.VITE_MINIAPP_API_URL?.replace(/\/$/, "");
+const DEFAULT_CITY = "الرياض";
+
 export default function Home() {
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState<"ar" | "en">("ar");
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(Boolean(API_BASE));
   const isArabic = language === "ar";
   const copy = useMemo(
     () =>
@@ -65,6 +71,8 @@ export default function Home() {
             city: "المدينة وطريقة الحساب",
             save: "حفظ الإعدادات في البوت",
             saved: "حُفظت الإعدادات",
+            saving: "جارٍ الحفظ…",
+            loading: "جارٍ مزامنة إعداداتك…",
             settingsNote: "يمكنك تعديل التفاصيل الكاملة من محادثة البوت.",
           }
         : {
@@ -81,46 +89,86 @@ export default function Home() {
             city: "City & calculation method",
             save: "Save settings in the bot",
             saved: "Settings saved",
+            saving: "Saving…",
+            loading: "Syncing your settings…",
             settingsNote: "Edit detailed preferences in the bot chat.",
           },
     [isArabic],
   );
 
-  useEffect(() => {
-    const app = window.Telegram?.WebApp;
-    if (!app) return;
-    app.ready();
-    app.expand();
-    app.MainButton?.setText(copy.save);
-    app.MainButton?.show();
-    app.MainButton?.onClick(() => void handleSave());
-  }, [copy.save]);
-
-  async function handleSave() {
-    const payload = { language, notifications, city: "الرياض", source: "miniapp" };
+  const handleSave = useCallback(async () => {
+    const apiPayload = { language, notifications_on: notifications, city: DEFAULT_CITY };
+    const fallbackPayload = { language, notifications, city: DEFAULT_CITY, source: "miniapp" };
     const telegram = window.Telegram?.WebApp;
-    const apiBase = import.meta.env.VITE_MINIAPP_API_URL?.replace(/\/$/, "");
     setSaveError(false);
+    setIsSaving(true);
     try {
-      if (apiBase && telegram?.initData) {
-        const response = await fetch(`${apiBase}/api/miniapp/preferences`, {
+      if (API_BASE) {
+        if (!telegram?.initData) throw new Error("Telegram initData is required for the API");
+        const response = await fetch(`${API_BASE}/api/miniapp/preferences`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             "X-Telegram-Init-Data": telegram.initData,
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(apiPayload),
         });
         if (!response.ok) throw new Error("Could not save preferences");
+      } else if (telegram?.sendData) {
+        telegram.sendData(JSON.stringify(fallbackPayload));
       } else {
-        telegram?.sendData?.(JSON.stringify(payload));
+        throw new Error("Telegram WebApp is unavailable");
       }
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2800);
     } catch {
       setSaveError(true);
+    } finally {
+      setIsSaving(false);
     }
-  }
+  }, [language, notifications]);
+
+  useEffect(() => {
+    const app = window.Telegram?.WebApp;
+    if (!app) return;
+    const onMainButtonClick = () => void handleSave();
+    app.ready();
+    app.expand();
+    app.MainButton?.setText(copy.save);
+    app.MainButton?.show();
+    app.MainButton?.onClick(onMainButtonClick);
+    return () => app.MainButton?.offClick?.(onMainButtonClick);
+  }, [copy.save, handleSave]);
+
+  useEffect(() => {
+    const telegram = window.Telegram?.WebApp;
+    const initData = telegram?.initData;
+    if (!API_BASE || !initData) {
+      setIsLoadingPreferences(false);
+      return;
+    }
+    const controller = new AbortController();
+    const loadPreferences = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/miniapp/preferences`, {
+          headers: { "X-Telegram-Init-Data": initData },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Could not load preferences");
+        const data: { configured: boolean; language?: "ar" | "en"; notifications_on?: boolean } = await response.json();
+        if (data.configured) {
+          if (data.language) setLanguage(data.language);
+          if (typeof data.notifications_on === "boolean") setNotifications(data.notifications_on);
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setSaveError(true);
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingPreferences(false);
+      }
+    };
+    void loadPreferences();
+    return () => controller.abort();
+  }, []);
 
   return (
     <main className="mihrab-app" dir={isArabic ? "rtl" : "ltr"}>
@@ -198,11 +246,11 @@ export default function Home() {
         </button>
       </section>
 
-      <button className="save-button" type="button" onClick={handleSave}>
+      <button className="save-button" type="button" onClick={handleSave} disabled={isSaving} aria-busy={isSaving}>
         {saved ? <Check size={19} /> : <span className="save-arch" />}
-        {saved ? copy.saved : copy.save}
+        {saved ? copy.saved : isSaving ? copy.saving : copy.save}
       </button>
-      <p className="footnote">{saveError ? (isArabic ? "تعذر الحفظ. حاول مرة أخرى." : "Could not save. Try again.") : copy.settingsNote}</p>
+      <p className="footnote">{saveError ? (isArabic ? "تعذر الحفظ أو مزامنة الإعدادات. حاول مرة أخرى." : "Could not save or sync settings. Try again.") : isLoadingPreferences ? copy.loading : copy.settingsNote}</p>
     </main>
   );
 }
