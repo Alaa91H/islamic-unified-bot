@@ -34,17 +34,32 @@ declare global {
   }
 }
 
-const prayers = [
-  { name: "الفجر", time: "04:38", icon: "◔" },
-  { name: "الشروق", time: "06:01", icon: "◒" },
-  { name: "الظهر", time: "12:19", icon: "●" },
-  { name: "العصر", time: "15:42", icon: "◐" },
-  { name: "المغرب", time: "18:37", icon: "◓" },
-  { name: "العشاء", time: "20:00", icon: "☾" },
-];
+type TodayPayload = {
+  configured: boolean;
+  profile: { username: string | null };
+  local_now: string;
+  city: { name: string; country: string; method: string; method_name: string; asr_method: string; timezone: string };
+  preferences: { language: "ar" | "en"; notifications_on: boolean };
+  prayers: { key: string; name: string; time: string }[];
+  next_prayer: { key: string; name: string; time: string; minutes_until: number; is_tomorrow: boolean };
+};
+
+const PRAYER_ICONS: Record<string, string> = {
+  fajr: "◔", sunrise: "◒", dhuhr: "●", asr: "◐", maghrib: "◓", isha: "☾",
+};
+const PRAYER_NAMES_EN: Record<string, string> = {
+  fajr: "Fajr", sunrise: "Sunrise", dhuhr: "Dhuhr", asr: "Asr", maghrib: "Maghrib", isha: "Isha",
+};
 
 const API_BASE = import.meta.env.VITE_MINIAPP_API_URL?.replace(/\/$/, "");
-const DEFAULT_CITY = "الرياض";
+const DEFAULT_CITY = "مكة المكرمة";
+
+function formatLocalDate(value: string | undefined, language: "ar" | "en") {
+  if (!value) return language === "ar" ? "جارٍ تحميل تاريخ اليوم…" : "Loading today…";
+  return new Intl.DateTimeFormat(language === "ar" ? "ar-SA-u-ca-islamic" : "en-US-u-ca-islamic", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  }).format(new Date(value));
+}
 
 export default function Home() {
   const [notifications, setNotifications] = useState(true);
@@ -52,18 +67,17 @@ export default function Home() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingPreferences, setIsLoadingPreferences] = useState(Boolean(API_BASE));
+  const [today, setToday] = useState<TodayPayload | null>(null);
+  const [isLoadingToday, setIsLoadingToday] = useState(Boolean(API_BASE));
+  const [todayError, setTodayError] = useState(false);
   const isArabic = language === "ar";
   const copy = useMemo(
     () =>
       isArabic
         ? {
-            greeting: "مرحبًا، عبد الله",
-            date: "الخميس، 14 صفر 1448 هـ",
+            greeting: "مرحبًا",
             next: "الصلاة القادمة",
-            remaining: "بقي 37 دقيقة",
-            asr: "العصر",
-            location: "الرياض، المملكة العربية السعودية",
+            unavailable: "تعذر تحميل بيانات اليوم",
             timings: "أوقات اليوم",
             settings: "إعداداتك",
             alert: "تنبيهات الأذان",
@@ -76,12 +90,9 @@ export default function Home() {
             settingsNote: "يمكنك تعديل التفاصيل الكاملة من محادثة البوت.",
           }
         : {
-            greeting: "Welcome, Abdullah",
-            date: "Thursday, 14 Safar 1448 AH",
+            greeting: "Welcome",
             next: "NEXT PRAYER",
-            remaining: "37 minutes remaining",
-            asr: "Asr",
-            location: "Riyadh, Saudi Arabia",
+            unavailable: "Today’s data is unavailable",
             timings: "TODAY'S TIMES",
             settings: "YOUR SETTINGS",
             alert: "Adhan alerts",
@@ -97,8 +108,9 @@ export default function Home() {
   );
 
   const handleSave = useCallback(async () => {
-    const apiPayload = { language, notifications_on: notifications, city: DEFAULT_CITY };
-    const fallbackPayload = { language, notifications, city: DEFAULT_CITY, source: "miniapp" };
+    const city = today?.city.name ?? DEFAULT_CITY;
+    const apiPayload = { language, notifications_on: notifications, city };
+    const fallbackPayload = { language, notifications, city, source: "miniapp" };
     const telegram = window.Telegram?.WebApp;
     setSaveError(false);
     setIsSaving(true);
@@ -126,7 +138,7 @@ export default function Home() {
     } finally {
       setIsSaving(false);
     }
-  }, [language, notifications]);
+  }, [language, notifications, today?.city.name]);
 
   useEffect(() => {
     const app = window.Telegram?.WebApp;
@@ -144,31 +156,39 @@ export default function Home() {
     const telegram = window.Telegram?.WebApp;
     const initData = telegram?.initData;
     if (!API_BASE || !initData) {
-      setIsLoadingPreferences(false);
+      setIsLoadingToday(false);
       return;
     }
     const controller = new AbortController();
-    const loadPreferences = async () => {
+    const loadToday = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/miniapp/preferences`, {
+        const response = await fetch(`${API_BASE}/api/miniapp/today`, {
           headers: { "X-Telegram-Init-Data": initData },
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error("Could not load preferences");
-        const data: { configured: boolean; language?: "ar" | "en"; notifications_on?: boolean } = await response.json();
-        if (data.configured) {
-          if (data.language) setLanguage(data.language);
-          if (typeof data.notifications_on === "boolean") setNotifications(data.notifications_on);
-        }
+        if (!response.ok) throw new Error("Could not load today data");
+        const data: TodayPayload = await response.json();
+        setToday(data);
+        setLanguage(data.preferences.language);
+        setNotifications(data.preferences.notifications_on);
       } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setSaveError(true);
+        if (!(error instanceof DOMException && error.name === "AbortError")) setTodayError(true);
       } finally {
-        if (!controller.signal.aborted) setIsLoadingPreferences(false);
+        if (!controller.signal.aborted) setIsLoadingToday(false);
       }
     };
-    void loadPreferences();
+    void loadToday();
     return () => controller.abort();
   }, []);
+
+  const cityLabel = today ? [today.city.name, today.city.country].filter(Boolean).join("، ") : "—";
+  const profileName = today?.profile.username ? `@${today.profile.username}` : "";
+  const nextPrayer = today?.next_prayer;
+  const remainingLabel = nextPrayer
+    ? isArabic
+      ? `بقي ${nextPrayer.minutes_until} دقيقة${nextPrayer.is_tomorrow ? " حتى الغد" : ""}`
+      : `${nextPrayer.minutes_until} minutes remaining${nextPrayer.is_tomorrow ? " until tomorrow" : ""}`
+    : isLoadingToday ? copy.loading : copy.unavailable;
 
   return (
     <main className="mihrab-app" dir={isArabic ? "rtl" : "ltr"}>
@@ -191,10 +211,10 @@ export default function Home() {
 
       <section className="welcome-row" aria-labelledby="greeting">
         <div>
-          <p className="eyebrow">{copy.date}</p>
-          <h1 id="greeting">{copy.greeting}</h1>
+          <p className="eyebrow">{formatLocalDate(today?.local_now, language)}</p>
+          <h1 id="greeting">{copy.greeting}{profileName ? `، ${profileName}` : ""}</h1>
         </div>
-        <div className="status-chip"><Sparkles size={14} /> <span>{isArabic ? "منظّم" : "In sync"}</span></div>
+        <div className="status-chip"><Sparkles size={14} /> <span>{today ? (isArabic ? "متزامن" : "In sync") : (isArabic ? "قيد المزامنة" : "Syncing")}</span></div>
       </section>
 
       <section className="hero-card" aria-label={copy.next}>
@@ -202,25 +222,25 @@ export default function Home() {
         <div className="hero-shade" />
         <div className="hero-content">
           <div className="hero-label"><MoonStar size={15} /> {copy.next}</div>
-          <div className="prayer-name">{copy.asr}</div>
-          <div className="hero-time">15:42</div>
-          <div className="remaining"><Clock3 size={15} /> {copy.remaining}</div>
+          <div className="prayer-name">{nextPrayer ? (isArabic ? nextPrayer.name : PRAYER_NAMES_EN[nextPrayer.key]) : "—"}</div>
+          <div className="hero-time">{nextPrayer?.time ?? "--:--"}</div>
+          <div className="remaining"><Clock3 size={15} /> {remainingLabel}</div>
         </div>
-        <div className="hero-location"><MapPin size={14} /> {copy.location}</div>
+        <div className="hero-location"><MapPin size={14} /> {cityLabel}</div>
       </section>
 
       <section className="section-head">
         <h2>{copy.timings}</h2>
-        <button className="quiet-link" type="button">{isArabic ? "التقويم" : "Calendar"} <ChevronLeft size={16} /></button>
+        <span className="quiet-link">{today?.city.timezone ?? ""} <ChevronLeft size={16} /></span>
       </section>
 
       <section className="prayer-rail" aria-label={copy.timings}>
-        {prayers.map((prayer) => {
-          const active = prayer.name === "العصر";
+        {(today?.prayers ?? []).map((prayer) => {
+          const active = prayer.key === nextPrayer?.key;
           return (
             <article className={`prayer-item ${active ? "active" : ""}`} key={prayer.name}>
-              <span className="prayer-icon">{prayer.icon}</span>
-              <strong>{isArabic ? prayer.name : prayer.name === "العصر" ? "Asr" : prayer.name}</strong>
+              <span className="prayer-icon">{PRAYER_ICONS[prayer.key]}</span>
+              <strong>{isArabic ? prayer.name : PRAYER_NAMES_EN[prayer.key]}</strong>
               <time>{prayer.time}</time>
               {active && <span className="now-dot" aria-label="الوقت الحالي" />}
             </article>
@@ -239,18 +259,17 @@ export default function Home() {
           <span className="setting-copy"><strong>{copy.alert}</strong><small>{copy.alertHint}</small></span>
           <span className={`toggle ${notifications ? "on" : ""}`} aria-checked={notifications} role="switch"><span /></span>
         </button>
-        <button className="setting-row" type="button">
+        <div className="setting-row">
           <span className="setting-icon"><MapPin size={19} /></span>
-          <span className="setting-copy"><strong>{copy.city}</strong><small>{copy.location} · أم القرى</small></span>
-          <ChevronLeft className="row-chevron" size={19} />
-        </button>
+          <span className="setting-copy"><strong>{copy.city}</strong><small>{cityLabel} · {today?.city.method_name ?? "—"}</small></span>
+        </div>
       </section>
 
       <button className="save-button" type="button" onClick={handleSave} disabled={isSaving} aria-busy={isSaving}>
         {saved ? <Check size={19} /> : <span className="save-arch" />}
         {saved ? copy.saved : isSaving ? copy.saving : copy.save}
       </button>
-      <p className="footnote">{saveError ? (isArabic ? "تعذر الحفظ أو مزامنة الإعدادات. حاول مرة أخرى." : "Could not save or sync settings. Try again.") : isLoadingPreferences ? copy.loading : copy.settingsNote}</p>
+      <p className="footnote">{saveError ? (isArabic ? "تعذر حفظ الإعدادات. حاول مرة أخرى." : "Could not save settings. Try again.") : todayError ? (isArabic ? "تعذر تحميل بيانات اليوم. تحقق من الاتصال ثم أعد الفتح." : "Could not load today’s data. Check your connection and reopen the app.") : isLoadingToday ? copy.loading : copy.settingsNote}</p>
     </main>
   );
 }
