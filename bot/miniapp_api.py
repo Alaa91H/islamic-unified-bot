@@ -18,7 +18,8 @@ from bot.miniapp_auth import (
     validate_init_data,
 )
 from bot.observability import log_event
-from bot.prayer.calculator import CityCoordinates
+from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
+from bot.time_utils import city_local_time, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,94 @@ class PreferencesInput(BaseModel):
     city: str = Field(min_length=1, max_length=120)
     language: str = Field(pattern="^(ar|en)$")
     notifications_on: bool
+
+
+_MINIAPP_PRAYERS = ("fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha")
+_MINIAPP_PRAYER_LABELS = {
+    "fajr": "الفجر",
+    "sunrise": "الشروق",
+    "dhuhr": "الظهر",
+    "asr": "العصر",
+    "maghrib": "المغرب",
+    "isha": "العشاء",
+}
+
+
+def _minutes_from_hhmm(value: str) -> int:
+    hour, minute = map(int, value.split(":"))
+    return hour * 60 + minute
+
+
+def _today_payload(
+    settings, identity: TelegramWebAppIdentity, user: UserSettings | None
+):
+    city = user.city if user else settings.default_city
+    coordinates = CityCoordinates.get_city_coords(city)
+    if coordinates is None:
+        logger.error("مدينة Mini App غير مدعومة: %s", city)
+        raise HTTPException(status_code=500, detail="Prayer data is unavailable")
+
+    method = (
+        user.method
+        if user
+        else coordinates.get("method", settings.default_calculation_method)
+    )
+    asr_method = user.asr_method if user else settings.default_asr_method
+    local_now = city_local_time(utc_now(), city, coordinates)
+    calculator = PrayerTimeCalculator(
+        latitude=coordinates["lat"],
+        longitude=coordinates["lng"],
+        timezone=coordinates["tz"],
+        method=method,
+        asr_method=asr_method,
+        dst=coordinates.get("dst", False),
+        city_name=city,
+    )
+    times = calculator.calculate_times(local_now)
+    now_minutes = local_now.hour * 60 + local_now.minute
+    next_key = "fajr"
+    next_minutes = _minutes_from_hhmm(times[next_key]) + 24 * 60
+    tomorrow = True
+    for prayer in ("fajr", "dhuhr", "asr", "maghrib", "isha"):
+        prayer_minutes = _minutes_from_hhmm(times[prayer])
+        if prayer_minutes > now_minutes:
+            next_key = prayer
+            next_minutes = prayer_minutes
+            tomorrow = False
+            break
+
+    return {
+        "configured": user is not None,
+        "profile": {"username": identity.username},
+        "local_now": local_now.isoformat(),
+        "city": {
+            "name": city,
+            "country": coordinates.get("country", ""),
+            "method": method,
+            "method_name": calculator.get_method_name(),
+            "asr_method": asr_method,
+            "timezone": str(local_now.tzinfo),
+        },
+        "preferences": {
+            "language": user.language if user else "ar",
+            "notifications_on": user.notifications_on if user else True,
+        },
+        "prayers": [
+            {
+                "key": prayer,
+                "name": _MINIAPP_PRAYER_LABELS[prayer],
+                "time": times[prayer],
+            }
+            for prayer in _MINIAPP_PRAYERS
+        ],
+        "next_prayer": {
+            "key": next_key,
+            "name": _MINIAPP_PRAYER_LABELS[next_key],
+            "time": times[next_key],
+            "minutes_until": next_minutes - now_minutes,
+            "is_tomorrow": tomorrow,
+        },
+    }
 
 
 def create_miniapp_api(settings, deps) -> FastAPI:
@@ -104,6 +193,20 @@ def create_miniapp_api(settings, deps) -> FastAPI:
             "language": user.language,
             "notifications_on": user.notifications_on,
         }
+
+    @app.get("/api/miniapp/today")
+    async def get_today(x_telegram_init_data: str | None = Header(default=None)):
+        """أعد بيانات اليوم المحسوبة خادميًا للمستخدم الموثق فقط."""
+        identity = await identity_from_header(x_telegram_init_data)
+        user = await deps.user_repo.get(identity.user_id)
+        payload = _today_payload(settings, identity, user)
+        log_event(
+            logger,
+            "miniapp_today_read",
+            configured=user is not None,
+            city=payload["city"]["name"],
+        )
+        return payload
 
     @app.put("/api/miniapp/preferences")
     async def save_preferences(

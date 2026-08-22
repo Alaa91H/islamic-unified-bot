@@ -2,14 +2,16 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from urllib.parse import urlencode
 
 import aiosqlite
 import pytest
 from fastapi.testclient import TestClient
 
+from bot.db.repositories.user_settings import UserSettings
 from bot.miniapp_api import create_miniapp_api
 from bot.miniapp_auth import InitDataValidationError, validate_init_data
 
@@ -138,3 +140,96 @@ def test_readyz_hides_operational_database_errors():
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Service unavailable"}
+
+
+@patch("bot.miniapp_api.utc_now", return_value=datetime(2026, 8, 22, 9, tzinfo=UTC))
+def test_today_api_returns_city_local_prayers_and_verified_preferences(_utc_now):
+    repo = SimpleNamespace(
+        get=AsyncMock(
+            return_value=UserSettings(
+                user_id=12345,
+                city="الرياض",
+                method="makkah",
+                asr_method="standard",
+                timezone=3,
+                language="en",
+                notifications_on=False,
+            )
+        ),
+        upsert=AsyncMock(),
+    )
+    settings = SimpleNamespace(
+        bot_token="test-token",
+        miniapp_init_data_max_age=3600,
+        miniapp_allowed_origin="",
+        default_city="مكة المكرمة",
+        default_calculation_method="mwl",
+        default_asr_method="standard",
+        default_timezone=3,
+    )
+    client = TestClient(
+        create_miniapp_api(
+            settings,
+            SimpleNamespace(
+                user_repo=repo,
+                db=SimpleNamespace(fetchone=AsyncMock(return_value=(1,))),
+                sent_repo=SimpleNamespace(delivery_metrics=AsyncMock(return_value={})),
+            ),
+        )
+    )
+
+    assert client.get("/api/miniapp/today").status_code == 401
+    response = client.get(
+        "/api/miniapp/today",
+        headers={"X-Telegram-Init-Data": signed_init_data("test-token")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["configured"] is True
+    assert body["city"]["name"] == "الرياض"
+    assert body["preferences"] == {"language": "en", "notifications_on": False}
+    assert [prayer["key"] for prayer in body["prayers"]] == [
+        "fajr",
+        "sunrise",
+        "dhuhr",
+        "asr",
+        "maghrib",
+        "isha",
+    ]
+    assert body["next_prayer"]["minutes_until"] > 0
+
+
+@patch("bot.miniapp_api.utc_now", return_value=datetime(2026, 8, 22, 9, tzinfo=UTC))
+def test_today_api_uses_configured_defaults_for_new_user(_utc_now):
+    repo = SimpleNamespace(get=AsyncMock(return_value=None), upsert=AsyncMock())
+    settings = SimpleNamespace(
+        bot_token="test-token",
+        miniapp_init_data_max_age=3600,
+        miniapp_allowed_origin="",
+        default_city="مكة المكرمة",
+        default_calculation_method="mwl",
+        default_asr_method="standard",
+        default_timezone=3,
+    )
+    client = TestClient(
+        create_miniapp_api(
+            settings,
+            SimpleNamespace(
+                user_repo=repo,
+                db=SimpleNamespace(fetchone=AsyncMock(return_value=(1,))),
+                sent_repo=SimpleNamespace(delivery_metrics=AsyncMock(return_value={})),
+            ),
+        )
+    )
+
+    response = client.get(
+        "/api/miniapp/today",
+        headers={"X-Telegram-Init-Data": signed_init_data("test-token")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["configured"] is False
+    assert body["city"]["name"] == "مكة المكرمة"
+    assert body["preferences"] == {"language": "ar", "notifications_on": True}
