@@ -76,8 +76,9 @@ async def build_dependencies(settings, app, stream_factory=None):
     from bot.scheduler.notifier import Notifier
     from bot.scheduler.prayer_scheduler import PrayerScheduler
     from bot.services.quran_radio import QuranRadio
+    from bot.transport import PyrogramMessageTransport
 
-    notifier = Notifier(app, stream_manager)
+    notifier = Notifier(PyrogramMessageTransport(app), stream_manager)
     scheduler = PrayerScheduler(
         user_repo,
         group_repo,

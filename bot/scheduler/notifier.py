@@ -28,10 +28,10 @@ _PRAYER_NAME = {
 
 
 class Notifier:
-    """يُرسل التنبيهات عبر Pyrogram ويُدير بث الأذان عبر StreamManager."""
+    """يُرسل التنبيهات عبر عقد نقل نصي ويُدير بث الأذان عبر StreamManager."""
 
-    def __init__(self, app, stream_manager):
-        self._app = app
+    def __init__(self, messages, stream_manager):
+        self._messages = messages
         self._stream = stream_manager
 
     async def notify_user(
@@ -49,7 +49,7 @@ class Notifier:
         else:
             text = f"{emoji} حان وقت صلاة {name}\n🕐 {prayer_time}\nحي على الصلاة"
         try:
-            await self._app.send_message(user_id, text)
+            await self._messages.send_text(user_id, text)
             logger.info("📩 تنبيه أُرسل للمستخدم %s (%s)", user_id, prayer)
             return True
         except Exception as e:
@@ -74,7 +74,7 @@ class Notifier:
             )
             # نرسل نصًا على الأقل إن تعذّر البث
             try:
-                await self._app.send_message(
+                await self._messages.send_text(
                     chat_id, f"{emoji} حان وقت صلاة {name}\n🕐 الأذان"
                 )
                 return True
@@ -86,7 +86,7 @@ class Notifier:
                 chat_id, url, f"أذان {name}", loop=False, duration_min=4
             )
             if ok:
-                await self._app.send_message(
+                await self._messages.send_text(
                     chat_id,
                     f"{emoji} حان وقت صلاة {name}\n🕌 الأذان يبث الآن",
                 )
