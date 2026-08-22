@@ -11,6 +11,7 @@ from typing import Any
 
 from pyrogram import filters
 
+from bot.i18n.messages import message_for
 from bot.prayer.calculator import CityCoordinates
 
 ALLOWED_LANGUAGES = {"ar", "en"}
@@ -63,12 +64,10 @@ def register(app, deps) -> None:
             settings = await deps.user_repo.get(user_id)
             if settings is None:
                 await message.reply_text(
-                    "أكمل إعداد المدينة أولًا عبر /azan_setup ثم أعد الحفظ."
+                    message_for(payload["language"], "miniapp_setup_first")
                 )
                 return
             await deps.user_repo.update_partial(user_id, **payload)
-            await message.reply_text("تم حفظ إعدادات محراب اليوم بنجاح.")
+            await message.reply_text(message_for(payload["language"], "miniapp_saved"))
         except ValueError:
-            await message.reply_text(
-                "تعذر حفظ الإعدادات. أعد فتح التطبيق من البوت وحاول مرة أخرى."
-            )
+            await message.reply_text(message_for("ar", "miniapp_invalid"))
