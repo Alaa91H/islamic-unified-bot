@@ -8,24 +8,14 @@ from __future__ import annotations
 
 
 def _home_keyboard():
+    """لوحة pilot لا تعرض إلا callbacks التي ينفذها Router الحالي."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📖 القرآن الكريم", callback_data="quran_menu"
-                ),
-                InlineKeyboardButton(
-                    text="📚 الحديث الشريف", callback_data="hadith:books"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🤲 الأذكار", callback_data="main_adhkar_menu"
-                ),
-                InlineKeyboardButton(
-                    text="🕌 الأذان والصلاة", callback_data="azan_home"
+                    text="🤲 أسماء الله الحسنى", callback_data="names:page:0"
                 ),
             ],
             [

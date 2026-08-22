@@ -6,7 +6,7 @@ import logging
 from urllib.parse import urlparse
 
 import aiosqlite
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -30,6 +30,64 @@ class PreferencesInput(BaseModel):
     notifications_on: bool
 
 
+class PreferencesResponse(BaseModel):
+    configured: bool
+    city: str | None = None
+    language: str | None = None
+    notifications_on: bool | None = None
+
+
+class SaveResponse(BaseModel):
+    saved: bool
+
+
+class CityResponse(BaseModel):
+    name: str
+    country: str
+    method: str
+    method_name: str
+
+
+class CitiesResponse(BaseModel):
+    query: str
+    cities: list[CityResponse]
+
+
+class ProfileResponse(BaseModel):
+    username: str | None
+
+
+class TodayCityResponse(CityResponse):
+    asr_method: str
+    timezone: str
+
+
+class TodayPreferencesResponse(BaseModel):
+    language: str
+    notifications_on: bool
+
+
+class PrayerResponse(BaseModel):
+    key: str
+    name: str
+    time: str
+
+
+class NextPrayerResponse(PrayerResponse):
+    minutes_until: int
+    is_tomorrow: bool
+
+
+class TodayResponse(BaseModel):
+    configured: bool
+    profile: ProfileResponse
+    local_now: str
+    city: TodayCityResponse
+    preferences: TodayPreferencesResponse
+    prayers: list[PrayerResponse]
+    next_prayer: NextPrayerResponse
+
+
 _MINIAPP_PRAYERS = ("fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha")
 _MINIAPP_PRAYER_LABELS = {
     "fajr": "الفجر",
@@ -46,9 +104,25 @@ def _minutes_from_hhmm(value: str) -> int:
     return hour * 60 + minute
 
 
+def _city_response(city_name: str) -> CityResponse:
+    coordinates = CityCoordinates.get_city_coords(city_name)
+    if coordinates is None:
+        raise ValueError(f"مدينة غير مدعومة: {city_name}")
+    method = CityCoordinates.get_recommended_method(city_name)
+    method_config = PrayerTimeCalculator.CALCULATION_METHODS.get(
+        method, PrayerTimeCalculator.CALCULATION_METHODS["mwl"]
+    )
+    return CityResponse(
+        name=city_name,
+        country=coordinates.get("country", ""),
+        method=method,
+        method_name=str(method_config["name"]),
+    )
+
+
 def _today_payload(
     settings, identity: TelegramWebAppIdentity, user: UserSettings | None
-):
+) -> TodayResponse:
     city = user.city if user else settings.default_city
     coordinates = CityCoordinates.get_city_coords(city)
     if coordinates is None:
@@ -84,38 +158,36 @@ def _today_payload(
             tomorrow = False
             break
 
-    return {
-        "configured": user is not None,
-        "profile": {"username": identity.username},
-        "local_now": local_now.isoformat(),
-        "city": {
-            "name": city,
-            "country": coordinates.get("country", ""),
-            "method": method,
-            "method_name": calculator.get_method_name(),
-            "asr_method": asr_method,
-            "timezone": str(local_now.tzinfo),
-        },
-        "preferences": {
-            "language": user.language if user else "ar",
-            "notifications_on": user.notifications_on if user else True,
-        },
-        "prayers": [
-            {
-                "key": prayer,
-                "name": _MINIAPP_PRAYER_LABELS[prayer],
-                "time": times[prayer],
-            }
+    return TodayResponse(
+        configured=user is not None,
+        profile=ProfileResponse(username=identity.username),
+        local_now=local_now.isoformat(),
+        city=TodayCityResponse(
+            name=city,
+            country=coordinates.get("country", ""),
+            method=method,
+            method_name=calculator.get_method_name(),
+            asr_method=asr_method,
+            timezone=str(local_now.tzinfo),
+        ),
+        preferences=TodayPreferencesResponse(
+            language=user.language if user else "ar",
+            notifications_on=user.notifications_on if user else True,
+        ),
+        prayers=[
+            PrayerResponse(
+                key=prayer, name=_MINIAPP_PRAYER_LABELS[prayer], time=times[prayer]
+            )
             for prayer in _MINIAPP_PRAYERS
         ],
-        "next_prayer": {
-            "key": next_key,
-            "name": _MINIAPP_PRAYER_LABELS[next_key],
-            "time": times[next_key],
-            "minutes_until": next_minutes - now_minutes,
-            "is_tomorrow": tomorrow,
-        },
-    }
+        next_prayer=NextPrayerResponse(
+            key=next_key,
+            name=_MINIAPP_PRAYER_LABELS[next_key],
+            time=times[next_key],
+            minutes_until=next_minutes - now_minutes,
+            is_tomorrow=tomorrow,
+        ),
+    )
 
 
 def create_miniapp_api(settings, deps) -> FastAPI:
@@ -177,7 +249,7 @@ def create_miniapp_api(settings, deps) -> FastAPI:
             raise HTTPException(status_code=503, detail="Service unavailable") from None
         return {"status": "ready", "delivery": delivery}
 
-    @app.get("/api/miniapp/preferences")
+    @app.get("/api/miniapp/preferences", response_model=PreferencesResponse)
     async def get_preferences(
         x_telegram_init_data: str | None = Header(default=None),
     ):
@@ -185,16 +257,31 @@ def create_miniapp_api(settings, deps) -> FastAPI:
         user = await deps.user_repo.get(identity.user_id)
         if user is None:
             log_event(logger, "miniapp_preferences_read", configured=False)
-            return {"configured": False}
+            return PreferencesResponse(configured=False)
         log_event(logger, "miniapp_preferences_read", configured=True)
-        return {
-            "configured": True,
-            "city": user.city,
-            "language": user.language,
-            "notifications_on": user.notifications_on,
-        }
+        return PreferencesResponse(
+            configured=True,
+            city=user.city,
+            language=user.language,
+            notifications_on=user.notifications_on,
+        )
 
-    @app.get("/api/miniapp/today")
+    @app.get("/api/miniapp/cities", response_model=CitiesResponse)
+    async def get_cities(
+        query: str = Query(default="", max_length=80),
+        x_telegram_init_data: str | None = Header(default=None),
+    ):
+        """أعد المدن المحلية المدعومة فقط لاختيار Mini App."""
+        await identity_from_header(x_telegram_init_data)
+        city_names = (
+            CityCoordinates.search_cities(query)
+            if query.strip()
+            else sorted(CityCoordinates.get_all_cities())
+        )
+        cities = [_city_response(city_name) for city_name in city_names[:100]]
+        return CitiesResponse(query=query, cities=cities)
+
+    @app.get("/api/miniapp/today", response_model=TodayResponse)
     async def get_today(x_telegram_init_data: str | None = Header(default=None)):
         """أعد بيانات اليوم المحسوبة خادميًا للمستخدم الموثق فقط."""
         identity = await identity_from_header(x_telegram_init_data)
@@ -204,11 +291,11 @@ def create_miniapp_api(settings, deps) -> FastAPI:
             logger,
             "miniapp_today_read",
             configured=user is not None,
-            city=payload["city"]["name"],
+            city=payload.city.name,
         )
         return payload
 
-    @app.put("/api/miniapp/preferences")
+    @app.put("/api/miniapp/preferences", response_model=SaveResponse)
     async def save_preferences(
         body: PreferencesInput,
         x_telegram_init_data: str | None = Header(default=None),
@@ -244,6 +331,6 @@ def create_miniapp_api(settings, deps) -> FastAPI:
             language=body.language,
             notifications_enabled=body.notifications_on,
         )
-        return {"saved": True}
+        return SaveResponse(saved=True)
 
     return app

@@ -21,6 +21,7 @@ import logging
 import random
 from datetime import datetime
 
+from bot.observability import log_event
 from bot.time_utils import city_local_time, utc_now
 
 logger = logging.getLogger(__name__)
@@ -251,6 +252,13 @@ class PrayerScheduler:
                 await self._sent_repo.complete_delivery(
                     target_id, target_type, key, date
                 )
+                log_event(
+                    logger,
+                    "notification_delivery_completed",
+                    prayer=prayer,
+                    target_type=target_type,
+                    is_prelude=bool(info.get("is_prelude", False)),
+                )
             else:
                 await self._sent_repo.fail_delivery(
                     target_id,
@@ -259,6 +267,22 @@ class PrayerScheduler:
                     date,
                     RuntimeError("notification gateway returned False"),
                 )
+                log_event(
+                    logger,
+                    "notification_delivery_failed",
+                    level=logging.WARNING,
+                    reason="gateway_returned_false",
+                    prayer=prayer,
+                    target_type=target_type,
+                )
         except Exception as exc:
             await self._sent_repo.fail_delivery(target_id, target_type, key, date, exc)
-            logger.exception("⚠️ فشل إرسال تنبيه %s لـ %s", prayer, target_id)
+            log_event(
+                logger,
+                "notification_delivery_failed",
+                level=logging.ERROR,
+                reason=type(exc).__name__,
+                prayer=prayer,
+                target_type=target_type,
+            )
+            logger.exception("⚠️ فشل إرسال تنبيه %s لنوع الهدف %s", prayer, target_type)

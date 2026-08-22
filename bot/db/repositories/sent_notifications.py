@@ -156,10 +156,34 @@ class SentNotificationsRepo:
         )
 
     async def delivery_metrics(self) -> dict[str, int]:
-        """إرجاع عدادات outbox الموجزة للرصد دون كشف أي محتوى مستخدم."""
+        """إرجاع عدادات outbox وصحته التشغيلية دون كشف أي محتوى مستخدم."""
         rows = await self._db.fetchall(
             "SELECT status, COUNT(*) AS count FROM sent_notifications GROUP BY status"
         )
         metrics = {"processing": 0, "sent": 0, "failed": 0}
         metrics.update({row["status"]: row["count"] for row in rows})
+        health = await self._db.fetchone(
+            """SELECT
+                   SUM(CASE WHEN status='failed' AND retry_class='transient'
+                            THEN 1 ELSE 0 END) AS transient_failed,
+                   SUM(CASE WHEN status='failed' AND retry_class='permanent'
+                            THEN 1 ELSE 0 END) AS permanent_failed,
+                   SUM(CASE WHEN status='failed' AND retry_class='transient'
+                              AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
+                            THEN 1 ELSE 0 END) AS retry_due,
+                   MAX(CASE WHEN status='processing' AND claimed_at IS NOT NULL
+                            THEN CAST(strftime('%s', 'now') - strftime('%s', claimed_at) AS INTEGER)
+                            ELSE 0 END) AS oldest_processing_age_seconds
+               FROM sent_notifications"""
+        )
+        metrics.update(
+            {
+                "transient_failed": int(health["transient_failed"] or 0),
+                "permanent_failed": int(health["permanent_failed"] or 0),
+                "retry_due": int(health["retry_due"] or 0),
+                "oldest_processing_age_seconds": int(
+                    health["oldest_processing_age_seconds"] or 0
+                ),
+            }
+        )
         return metrics

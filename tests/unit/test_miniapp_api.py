@@ -233,3 +233,45 @@ def test_today_api_uses_configured_defaults_for_new_user(_utc_now):
     assert body["configured"] is False
     assert body["city"]["name"] == "مكة المكرمة"
     assert body["preferences"] == {"language": "ar", "notifications_on": True}
+
+
+def test_cities_api_returns_supported_cities_only_to_verified_user():
+    repo = SimpleNamespace(get=AsyncMock(return_value=None), upsert=AsyncMock())
+    settings = SimpleNamespace(
+        bot_token="test-token",
+        miniapp_init_data_max_age=3600,
+        miniapp_allowed_origin="",
+        default_city="مكة المكرمة",
+        default_calculation_method="mwl",
+        default_asr_method="standard",
+        default_timezone=3,
+    )
+    client = TestClient(
+        create_miniapp_api(
+            settings,
+            SimpleNamespace(
+                user_repo=repo,
+                db=SimpleNamespace(fetchone=AsyncMock(return_value=(1,))),
+                sent_repo=SimpleNamespace(delivery_metrics=AsyncMock(return_value={})),
+            ),
+        )
+    )
+
+    assert client.get("/api/miniapp/cities").status_code == 401
+    response = client.get(
+        "/api/miniapp/cities?query=الرياض",
+        headers={"X-Telegram-Init-Data": signed_init_data("test-token")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "query": "الرياض",
+        "cities": [
+            {
+                "name": "الرياض",
+                "country": "السعودية",
+                "method": "makkah",
+                "method_name": "أم القرى (Umm Al-Qura University)",
+            }
+        ],
+    }
