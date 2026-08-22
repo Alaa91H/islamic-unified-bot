@@ -987,6 +987,9 @@ class TestOwnerRegistration:
     async def test_status_cmd_no_streams(self):
         deps = self._make_deps()
         deps.stream_manager.active_streams = MagicMock(return_value={})
+        deps.sent_repo.delivery_metrics = AsyncMock(
+            return_value={"processing": 0, "sent": 0, "failed": 0}
+        )
 
         app = MagicMock()
         captured = self._capture_handlers(app, deps)
@@ -1005,7 +1008,7 @@ class TestOwnerRegistration:
 
     @pytest.mark.asyncio
     async def test_status_cmd_with_streams(self):
-        from datetime import datetime, timedelta
+        from datetime import UTC, datetime, timedelta
 
         deps = self._make_deps()
         deps.stream_manager.active_streams = MagicMock(
@@ -1013,9 +1016,12 @@ class TestOwnerRegistration:
                 -100123: {
                     "url": "test",
                     "title": "Test Stream",
-                    "started_at": datetime.now() - timedelta(minutes=30),
+                    "started_at": datetime.now(UTC) - timedelta(minutes=30),
                 },
             }
+        )
+        deps.sent_repo.delivery_metrics = AsyncMock(
+            return_value={"processing": 1, "sent": 2, "failed": 3}
         )
 
         app = MagicMock()
@@ -1107,7 +1113,6 @@ class TestHandlerRegistry:
         assert app.on_callback_query.called
 
     def test_registry_imports_all_modules(self):
-
 
         assert True
 

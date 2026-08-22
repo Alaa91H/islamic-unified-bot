@@ -68,6 +68,7 @@ class SentNotificationsRepo:
         prayer_date: str,
         *,
         stale_after_seconds: int = 300,
+        max_attempts: int = 5,
     ) -> bool:
         """حجز حدث للتسليم.
 
@@ -83,13 +84,24 @@ class SentNotificationsRepo:
                    claimed_at=datetime('now'),
                    attempts=sent_notifications.attempts + 1,
                    last_error=NULL
-               WHERE sent_notifications.status='failed'
+               WHERE (
+                      sent_notifications.status='failed'
+                      AND sent_notifications.retry_class='transient'
+                      AND sent_notifications.attempts < ?
+                      AND (
+                          sent_notifications.next_retry_at IS NULL
+                          OR sent_notifications.next_retry_at <= datetime('now')
+                      )
+                  )
                   OR (
                       sent_notifications.status='processing'
+                      AND sent_notifications.attempts < ?
                       AND sent_notifications.claimed_at < datetime('now', ?)
                   )""",
             (
                 *self._key(target_id, target_type, prayer, prayer_date),
+                max_attempts,
+                max_attempts,
                 f"-{stale_after_seconds} seconds",
             ),
         )
@@ -105,7 +117,8 @@ class SentNotificationsRepo:
         """وضع الحدث المحجوز في حالة sent بعد نجاح الإرسال."""
         await self._db.execute(
             """UPDATE sent_notifications
-               SET status='sent', sent_at=datetime('now'), last_error=NULL
+               SET status='sent', sent_at=datetime('now'), last_error=NULL,
+                   next_retry_at=NULL
                WHERE target_id=? AND target_type=? AND prayer=? AND prayer_date=?""",
             self._key(target_id, target_type, prayer, prayer_date),
         )
@@ -117,11 +130,36 @@ class SentNotificationsRepo:
         prayer: str,
         prayer_date: str,
         error: Exception,
+        *,
+        retryable: bool = True,
     ) -> None:
-        """تسجيل فشل قابل لإعادة المحاولة من دورة جدولة لاحقة."""
+        """تسجيل فشل بمهلة تصاعدية، أو إنهاؤه كفشل دائم عند عدم قابلية الإعادة."""
         await self._db.execute(
             """UPDATE sent_notifications
-               SET status='failed', last_error=?
+               SET status='failed', last_error=?,
+                   retry_class=?,
+                   next_retry_at = CASE
+                       WHEN ? = 0 THEN NULL
+                       WHEN attempts <= 1 THEN datetime('now', '+30 seconds')
+                       WHEN attempts = 2 THEN datetime('now', '+1 minute')
+                       WHEN attempts = 3 THEN datetime('now', '+2 minutes')
+                       WHEN attempts = 4 THEN datetime('now', '+5 minutes')
+                       ELSE datetime('now', '+15 minutes')
+                   END
                WHERE target_id=? AND target_type=? AND prayer=? AND prayer_date=?""",
-            (str(error)[:500], *self._key(target_id, target_type, prayer, prayer_date)),
+            (
+                str(error)[:500],
+                "transient" if retryable else "permanent",
+                int(retryable),
+                *self._key(target_id, target_type, prayer, prayer_date),
+            ),
         )
+
+    async def delivery_metrics(self) -> dict[str, int]:
+        """إرجاع عدادات outbox الموجزة للرصد دون كشف أي محتوى مستخدم."""
+        rows = await self._db.fetchall(
+            "SELECT status, COUNT(*) AS count FROM sent_notifications GROUP BY status"
+        )
+        metrics = {"processing": 0, "sent": 0, "failed": 0}
+        metrics.update({row["status"]: row["count"] for row in rows})
+        return metrics
