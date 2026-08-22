@@ -18,6 +18,7 @@ def _home_keyboard():
                     text="📖 القرآن الكريم", callback_data="quran_text:home"
                 ),
             ],
+            [InlineKeyboardButton(text="📿 الأذكار", callback_data="adhkar:home")],
             [
                 InlineKeyboardButton(
                     text="🤲 أسماء الله الحسنى", callback_data="names:page:0"
@@ -177,6 +178,100 @@ def _quran_page_keyboard(surah: int, page: int, total_pages: int, show_tafsir: b
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _adhkar_categories_keyboard():
+    """لوحة فئات الأذكار لمسار aiogram النصي فقط."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from bot.data.adhkar import ADHKAR_CATEGORIES
+
+    rows = [
+        [InlineKeyboardButton(text=title, callback_data=f"adhkar:category:{key}")]
+        for key, title in ADHKAR_CATEGORIES.items()
+    ]
+    rows.append(
+        [InlineKeyboardButton(text="🔙 الرئيسية", callback_data="back_to_start")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _adhkar_items_keyboard(category: str):
+    """لوحة أذكار فئة مؤكدة أو None لفئة غير صالحة."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from bot.data.adhkar import ADHKAR
+
+    items = ADHKAR.get(category, [])
+    if not items:
+        return None
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{index + 1}. {item['title'][:35]}",
+                callback_data=f"adhkar:item:{category}:{index}",
+            )
+        ]
+        for index, item in enumerate(items)
+    ]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="🔙 الفئات", callback_data="adhkar:home")],
+            [InlineKeyboardButton(text="⌂ الرئيسية", callback_data="back_to_start")],
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _adhkar_item_detail(category: str, index: int) -> tuple[str, object] | None:
+    """أعد تفاصيل الذكر ولوحة العودة أو None لمعرف غير صالح."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from bot.data.adhkar import ADHKAR
+
+    items = ADHKAR.get(category, [])
+    if not 0 <= index < len(items):
+        return None
+    item = items[index]
+    text = (
+        f"🕌 **{item['title']}**\n\n"
+        f"📝 **النص:**\n{item['text']}\n\n"
+        f"✨ **الفضل:**\n{item['benefit']}"
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔙 الفئة", callback_data=f"adhkar:category:{category}"
+                )
+            ],
+            [InlineKeyboardButton(text="⌂ الرئيسية", callback_data="back_to_start")],
+        ]
+    )
+    return text, keyboard
+
+
+def _parse_adhkar_callback(data: str) -> tuple[str, str, int | None] | None:
+    """تحقق من callback الأذكار وحمّل فقط فئات وعناصر البيانات المحلية الصحيحة."""
+    from bot.data.adhkar import ADHKAR, ADHKAR_CATEGORIES
+
+    parts = data.split(":")
+    if parts == ["adhkar", "home"]:
+        return "home", "", None
+    if len(parts) == 3 and parts[:2] == ["adhkar", "category"]:
+        category = parts[2]
+        if category in ADHKAR_CATEGORIES and ADHKAR.get(category):
+            return "category", category, None
+        return None
+    if len(parts) == 4 and parts[:2] == ["adhkar", "item"]:
+        category = parts[2]
+        try:
+            index = int(parts[3])
+        except ValueError:
+            return None
+        if category in ADHKAR and 0 <= index < len(ADHKAR[category]):
+            return "item", category, index
+    return None
+
+
 def create_main_menu_router():
     """أنشئ Router للأوامر النصية فقط دون اعتماد على Pyrogram أو MTProto."""
     from aiogram import F, Router
@@ -197,6 +292,13 @@ def create_main_menu_router():
             await message.edit_text(text, reply_markup=_quran_text_keyboard())
         else:
             await message.answer(text, reply_markup=_quran_text_keyboard())
+
+    async def show_adhkar_landing(message, *, edit: bool = False):
+        text = "📿 **الأذكار الإسلامية الشاملة**\n\nاختر الفئة:"
+        if edit:
+            await message.edit_text(text, reply_markup=_adhkar_categories_keyboard())
+        else:
+            await message.answer(text, reply_markup=_adhkar_categories_keyboard())
 
     @router.message(CommandStart())
     async def start_command(message):
@@ -227,6 +329,10 @@ def create_main_menu_router():
     async def quran_text_command(message):
         await show_quran_landing(message)
 
+    @router.message(Command("adhkar"))
+    async def adhkar_command(message):
+        await show_adhkar_landing(message)
+
     @router.callback_query(F.data == "about")
     async def about_callback(callback):
         if callback.message:
@@ -245,6 +351,37 @@ def create_main_menu_router():
     async def quran_text_home_callback(callback):
         if callback.message:
             await show_quran_landing(callback.message, edit=True)
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith("adhkar:"))
+    async def adhkar_callback(callback):
+        parsed = _parse_adhkar_callback(callback.data or "")
+        if parsed is None or callback.message is None:
+            await callback.answer("طلب غير صالح", show_alert=True)
+            return
+        kind, category, index = parsed
+        if kind == "home":
+            await show_adhkar_landing(callback.message, edit=True)
+            await callback.answer()
+            return
+        if kind == "category":
+            from bot.data.adhkar import ADHKAR_CATEGORIES
+
+            keyboard = _adhkar_items_keyboard(category)
+            if keyboard is None:
+                await callback.answer("فئة غير صالحة", show_alert=True)
+                return
+            await callback.message.edit_text(
+                f"📿 **{ADHKAR_CATEGORIES[category]}:**", reply_markup=keyboard
+            )
+            await callback.answer()
+            return
+        detail = _adhkar_item_detail(category, index or 0)
+        if detail is None:
+            await callback.answer("ذكر غير صالح", show_alert=True)
+            return
+        text, keyboard = detail
+        await callback.message.edit_text(text, reply_markup=keyboard)
         await callback.answer()
 
     @router.callback_query(F.data.startswith("names:"))
