@@ -1,3 +1,4 @@
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +9,7 @@ from bot.aiogram_runtime import (
     _adhkar_items_keyboard,
     _dua_categories_keyboard,
     _dua_detail,
+    _hijri_text,
     _home_keyboard,
     _name_detail,
     _names_keyboard,
@@ -26,8 +28,8 @@ def test_aiogram_router_registers_the_pilot_main_menu_handlers():
     router = create_main_menu_router()
 
     assert router.name == "main-menu-pilot"
-    assert len(router.message.handlers) == 6
-    assert len(router.callback_query.handlers) == 7
+    assert len(router.message.handlers) == 7
+    assert len(router.callback_query.handlers) == 8
 
 
 def test_build_aiogram_app_includes_the_pilot_router():
@@ -60,6 +62,7 @@ def test_aiogram_home_keyboard_exposes_only_callbacks_implemented_by_pilot():
         "quran_text:home",
         "adhkar:home",
         "dua:home",
+        "hijri:today",
         "names:page:0",
         "about",
     }
@@ -137,6 +140,11 @@ def test_aiogram_dua_callbacks_are_bounded_to_local_data():
     assert _parse_dua_callback("dua:show") is None
     assert _dua_detail(category) is not None
     assert _dua_detail("unknown") is None
+
+
+def test_aiogram_hijri_text_uses_shared_calendar_and_handles_unsupported_dates():
+    assert "هجري: 1 محرم 1 هـ" in _hijri_text(date(622, 7, 16))
+    assert _hijri_text(date(622, 7, 15)) == "❌ تعذر حساب التاريخ الهجري"
 
 
 def test_settings_rejects_aiogram_runtime_with_voice_streaming(monkeypatch):
