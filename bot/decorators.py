@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Decorators للتحقق من الصلاحيات ومعالجة الأخطاء موحّدة.
 
 تُستخدم عبر كل المعالجات لتقليل التكرار وضمان سلوك متّسق:
@@ -8,6 +7,7 @@
 - safe_handler: يلتقط الاستثناءات ويرد برسالة أنيقة بدل انهيار الزر.
 """
 
+import contextlib
 import functools
 import logging
 
@@ -84,7 +84,7 @@ def admin_only(app, settings=None):
                     ):
                         await _reply_or_answer(update, "❌ هذا الأمر للمشرفين فقط")
                         return None
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.warning("⚠️ تعذّر التحقق من المشرف: %s", e)
                     await _reply_or_answer(update, "❌ تعذّر التحقق من صلاحيات المشرف")
                     return None
@@ -103,7 +103,7 @@ def safe_handler():
         async def wrapper(client, update, *args, **kwargs):
             try:
                 return await func(client, update, *args, **kwargs)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 err_name = type(e).__name__
                 if "MessageNotModified" in err_name or "MESSAGE_NOT_MODIFIED" in str(e):
                     return  # تجاهل صامت — تحرير بنفس المحتوى
@@ -115,10 +115,8 @@ def safe_handler():
                     or getattr(update, "answer", None)
                 )
                 if reply:
-                    try:
+                    with contextlib.suppress(Exception):
                         await reply(f"❌ حدث خطأ: {str(e)[:100]}")
-                    except Exception:  # noqa: BLE001
-                        pass
 
         return wrapper
 

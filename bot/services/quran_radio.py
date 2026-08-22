@@ -2,7 +2,6 @@ import asyncio
 import logging
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from bot.data.sources import QURANIC_RECITERS
 from bot.data.surahs import SURAHS
@@ -43,20 +42,20 @@ AUDIO_QUALITY_LABELS = {
 class RadioState:
     chat_id: int
     reciter_key: str = "abdul_basit"
-    queue: List[int] = field(default_factory=lambda: list(range(1, 115)))
+    queue: list[int] = field(default_factory=lambda: list(range(1, 115)))
     current_index: int = 0
     shuffle: bool = False
     playing: bool = False
     paused: bool = False
     audio_quality: str = "high"
-    task: Optional[asyncio.Task] = None
+    task: asyncio.Task | None = None
 
 
 class QuranRadio:
     def __init__(self, stream_manager, settings):
         self._stream = stream_manager
         self._settings = settings
-        self._states: Dict[int, RadioState] = {}
+        self._states: dict[int, RadioState] = {}
 
     def get_current_surah(self, state: RadioState) -> int:
         """يُرجع رقم السورة الحالية لحالة راديو معيّنة."""
@@ -72,7 +71,7 @@ class QuranRadio:
         self,
         chat_id: int,
         reciter_key: str = "abdul_basit",
-        surah_start: Optional[int] = None,
+        surah_start: int | None = None,
     ) -> bool:
         old = self._states.get(chat_id)
         if old and old.task:
@@ -128,7 +127,7 @@ class QuranRadio:
             current = state.queue[state.current_index]
             remaining = [s for s in state.queue if s != current]
             random.shuffle(remaining)
-            state.queue = [current] + remaining
+            state.queue = [current, *remaining]
             state.current_index = 0
         else:
             current = state.queue[state.current_index]
@@ -145,7 +144,7 @@ class QuranRadio:
             return await self._play_current(chat_id)
         return True
 
-    def get_state(self, chat_id: int) -> Optional[RadioState]:
+    def get_state(self, chat_id: int) -> RadioState | None:
         return self._states.get(chat_id)
 
     async def _play_current(self, chat_id: int) -> bool:

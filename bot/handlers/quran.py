@@ -4,6 +4,7 @@ from bot.handlers.ui import markup_with_bottom_controls
 
 def surahs_keyboard(page: int = 0):
     from pyrogram.types import InlineKeyboardButton
+
     from bot.data.surahs import SURAHS
 
     items_per_page = 20
@@ -47,6 +48,7 @@ def surahs_keyboard(page: int = 0):
 
 def reciters_keyboard():
     from pyrogram.types import InlineKeyboardButton
+
     from bot.data.sources import QURANIC_RECITERS
 
     kb = []
@@ -149,8 +151,9 @@ def register(app, deps) -> None:
     @app.on_callback_query(filters.regex("^quran_reciter:"))
     @safe_handler()
     async def quran_reciter_handler(client, cq):
-        from bot.data.sources import QURANIC_RECITERS
         from pyrogram.types import InlineKeyboardButton
+
+        from bot.data.sources import QURANIC_RECITERS
 
         key = cq.data.split(":", 1)[1]
         info = QURANIC_RECITERS.get(key)

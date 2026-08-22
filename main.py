@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import asyncio
 import contextlib
@@ -100,11 +99,12 @@ async def _heartbeat():
     health_path = Path(".health")
     while True:
         try:
-            health_path.write_text(str(time.time()))
+            await asyncio.to_thread(health_path.write_text, str(time.time()))
             await asyncio.sleep(60)
         except asyncio.CancelledError:
             break
-        except Exception:
+        except OSError:
+            logger.warning("تعذر تحديث ملف heartbeat", exc_info=True)
             await asyncio.sleep(60)
 
 
@@ -129,6 +129,8 @@ async def main():
     deps = None
     monitor_task = None
     heartbeat_task = None
+    miniapp_api_server = None
+    miniapp_api_task = None
     app_started = False
     try:
         from pyrogram import Client
@@ -162,6 +164,27 @@ async def main():
 
         await deps.adhkar_scheduler.start()
 
+        if settings.miniapp_api_enabled:
+            import uvicorn
+
+            from bot.miniapp_api import create_miniapp_api
+
+            miniapp_api_server = uvicorn.Server(
+                uvicorn.Config(
+                    create_miniapp_api(settings, deps),
+                    host=settings.miniapp_api_host,
+                    port=settings.miniapp_api_port,
+                    log_level=settings.log_level.lower(),
+                    access_log=False,
+                )
+            )
+            miniapp_api_task = asyncio.create_task(miniapp_api_server.serve())
+            logger.info(
+                "✅ API Mini App تعمل على %s:%s",
+                settings.miniapp_api_host,
+                settings.miniapp_api_port,
+            )
+
         monitor_task = asyncio.create_task(_memory_monitor(deps))
         heartbeat_task = asyncio.create_task(_heartbeat())
 
@@ -170,10 +193,15 @@ async def main():
 
         await asyncio.Event().wait()
 
-    except Exception as e:
-        logger.exception("❌ خطأ حرج: %s", e)
+    except Exception:
+        logger.exception("❌ خطأ حرج أثناء تشغيل البوت")
         raise
     finally:
+        if miniapp_api_server:
+            miniapp_api_server.should_exit = True
+        if miniapp_api_task:
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(miniapp_api_task, timeout=10)
         if monitor_task:
             monitor_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -200,24 +228,9 @@ if __name__ == "__main__":
         pass
 
     try:
-        from pyrogram import Client
-
-        Client
-    except ImportError:
-        logger.error(
-            "❌ المكتبة Pyrogram غير مثبتة. قم بتشغيل: pip install -r requirements.txt"
-        )
-
-    try:
-        app_instance = Client("islamic_unified_bot")
-        del app_instance
-    except Exception:
-        pass
-
-    try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("🛑 تم الإيقاف بواسطة المستخدم")
-    except Exception as e:
-        logger.error("❌ خطأ حرج: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("❌ خطأ حرج أثناء إيقاف البوت")
         sys.exit(1)

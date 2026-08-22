@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """إعدادات البوت المركزية — تُقرأ من متغيرات البيئة مرة واحدة عند الإقلاع.
 
 كل المكوّنات تتلقى نسخة من Settings بدل قراءة os.getenv مباشرة، مما يجعل
@@ -35,8 +34,10 @@ def _get_int(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
-    except ValueError:
-        raise ValueError(f"❌ {name} يجب أن يكون رقمًا صحيحًا، حصلنا على: {raw!r}")
+    except ValueError as exc:
+        raise ValueError(
+            f"❌ {name} يجب أن يكون رقمًا صحيحًا، حصلنا على: {raw!r}"
+        ) from exc
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -120,6 +121,13 @@ class Settings:
     max_concurrent_streams: int = 2
     lightweight_mode: bool = True
 
+    # --- Telegram Mini App API ---
+    miniapp_api_enabled: bool = False
+    miniapp_api_host: str = "127.0.0.1"
+    miniapp_api_port: int = 8080
+    miniapp_init_data_max_age: int = 3600
+    miniapp_allowed_origin: str = ""
+
     @classmethod
     def from_env(cls) -> "Settings":
         """يبني الإعدادات من متغيرات البيئة مع تحقق صارم وأخطاء واضحة."""
@@ -182,6 +190,11 @@ class Settings:
             cache_ttl=_get_int("CACHE_TTL", 3600),
             max_concurrent_streams=_get_int("MAX_CONCURRENT_STREAMS", 2),
             lightweight_mode=_get_bool("LIGHTWEIGHT_MODE", True),
+            miniapp_api_enabled=_get_bool("MINIAPP_API_ENABLED", False),
+            miniapp_api_host=_get_str("MINIAPP_API_HOST", "127.0.0.1"),
+            miniapp_api_port=_get_int("MINIAPP_API_PORT", 8080),
+            miniapp_init_data_max_age=_get_int("MINIAPP_INIT_DATA_MAX_AGE", 3600),
+            miniapp_allowed_origin=_get_str("MINIAPP_ALLOWED_ORIGIN", ""),
         )
 
     def is_owner(self, user_id: int) -> bool:

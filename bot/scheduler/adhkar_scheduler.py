@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -12,19 +12,19 @@ MAX_BACKOFF_SECONDS = 300
 
 
 def _now_hhmm() -> str:
-    return datetime.now(timezone.utc).strftime("%H:%M")
+    return datetime.now(UTC).strftime("%H:%M")
 
 
 def _today_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _is_friday() -> bool:
-    return datetime.now(timezone.utc).weekday() == 4
+    return datetime.now(UTC).weekday() == 4
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _city_local_now(now_utc: datetime, coords: dict) -> datetime:
@@ -167,8 +167,8 @@ class AdhkarScheduler:
         s,
         now_hhmm: str,
         today: str,
-        now_utc: datetime = None,
-        local_now: datetime = None,
+        now_utc: datetime | None = None,
+        local_now: datetime | None = None,
     ) -> None:
         chat_id = s.chat_id
         now_utc = now_utc or _utc_now()
@@ -177,7 +177,7 @@ class AdhkarScheduler:
         if s.interval_enabled and s.last_sent_at:
             try:
                 last = datetime.strptime(s.last_sent_at, "%Y-%m-%d %H:%M").replace(
-                    tzinfo=timezone.utc
+                    tzinfo=UTC
                 )
                 elapsed = (now_utc - last).total_seconds() / 60
             except (ValueError, TypeError):
@@ -222,8 +222,10 @@ class AdhkarScheduler:
                 )
                 await self._mark_sent(chat_id, sent_key)
 
-    async def _send_adhkar(self, chat_id: int, categories: list, header: str = None):
-        category, item = _pick_random_item(categories)
+    async def _send_adhkar(
+        self, chat_id: int, categories: list, header: str | None = None
+    ):
+        _category, item = _pick_random_item(categories)
         if not item:
             return
         text = _format_adhkar(item)
@@ -233,7 +235,7 @@ class AdhkarScheduler:
             await self._app.send_message(chat_id, text)
             logger.info("📿 أُرسل ذكر إلى %s", chat_id)
         except Exception as e:
-            logger.error("❌ فشل إرسال ذكر إلى %s: %s", chat_id, e)
+            logger.exception("❌ فشل إرسال ذكر إلى %s: %s", chat_id, e)
 
     async def _already_sent_today(self, chat_id: int, key: str) -> bool:
         row = await self._repo._db.fetchone(

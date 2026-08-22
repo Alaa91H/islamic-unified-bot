@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """القائمة الرئيسية: /start /help /about + back_to_start.
 
 البنية: دوال بناء لوحات المفاتيح والنصوص (نقية، قابلة للاختبار) + register()

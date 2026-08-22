@@ -168,3 +168,26 @@ async def test_stream_end_no_loop_does_not_replay(manager):
     fake_update.chat_id = -100
     await ptc._on_update(None, fake_update)
     assert ptc.play.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_play_respects_maximum_concurrent_streams(manager):
+    sm, _ = manager
+    sm.max_concurrent_streams = 1
+
+    assert await sm.play(-100, "http://x/a.mp3", "first") is True
+    assert await sm.play(-200, "http://x/b.mp3", "second") is False
+    assert set(sm.active_streams()) == {-100}
+
+
+@pytest.mark.asyncio
+async def test_stop_all_stops_underlying_client(manager):
+    sm, ptc = manager
+    await sm.start()
+    await sm.play(-100, "http://x/a.mp3", "t", duration_min=999)
+
+    await sm.stop_all()
+
+    ptc.stop.assert_awaited_once()
+    assert sm.active_streams() == {}
+    assert sm._started is False

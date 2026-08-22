@@ -131,7 +131,7 @@ def register(app, deps) -> None:
         await cq.message.edit_text(
             text,
             reply_markup=InlineKeyboardMarkup(
-                [nav_buttons] + extra if nav_buttons else extra
+                [nav_buttons, *extra] if nav_buttons else extra
             ),
         )
         await cq.answer()

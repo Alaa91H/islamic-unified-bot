@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """حاوية التبعيات (DI container) + دورة حياتها.
 
 تُنشأ التبعيات مرة واحدة في main() وتُمرر للمعالجات بدل singletons عالمية.
@@ -15,17 +14,17 @@ class Dependencies:
     """كل التبعيات المشتركة بين المعالجات والخدمات."""
 
     __slots__ = (
-        "settings",
-        "db",
-        "user_repo",
-        "group_repo",
-        "sent_repo",
         "adhkar_repo",
-        "stream_manager",
-        "notifier",
-        "scheduler",
         "adhkar_scheduler",
+        "db",
+        "group_repo",
+        "notifier",
         "quran_radio",
+        "scheduler",
+        "sent_repo",
+        "settings",
+        "stream_manager",
+        "user_repo",
     )
 
     def __init__(self, **kwargs):
@@ -43,10 +42,10 @@ async def build_dependencies(settings, app, stream_factory=None):
     db = Database(settings.db_path, pool_size=settings.db_pool_size)
     await db.connect()
 
-    from bot.db.repositories.user_settings import UserSettingsRepo
+    from bot.db.repositories.adhkar_settings import AdhkarSettingsRepo
     from bot.db.repositories.group_settings import GroupSettingsRepo
     from bot.db.repositories.sent_notifications import SentNotificationsRepo
-    from bot.db.repositories.adhkar_settings import AdhkarSettingsRepo
+    from bot.db.repositories.user_settings import UserSettingsRepo
 
     user_repo = UserSettingsRepo(db)
     group_repo = GroupSettingsRepo(db)
@@ -63,6 +62,7 @@ async def build_dependencies(settings, app, stream_factory=None):
                 base_delay=settings.initial_reconnect_delay,
                 default_duration_min=settings.default_stream_duration,
                 audio_quality=settings.audio_quality,
+                max_concurrent_streams=settings.max_concurrent_streams,
             )
         else:
             stream_manager = stream_factory(app)
@@ -72,12 +72,13 @@ async def build_dependencies(settings, app, stream_factory=None):
         logger.warning("⚠️ py-tgcalls غير مثبت — البث الصوتي معطّل")
         stream_manager = NullStreamManager(app)
 
+    from bot.scheduler.adhkar_scheduler import AdhkarScheduler
     from bot.scheduler.notifier import Notifier
     from bot.scheduler.prayer_scheduler import PrayerScheduler
-    from bot.scheduler.adhkar_scheduler import AdhkarScheduler
     from bot.services.quran_radio import QuranRadio
+    from bot.transport import PyrogramMessageTransport
 
-    notifier = Notifier(app, stream_manager)
+    notifier = Notifier(PyrogramMessageTransport(app), stream_manager)
     scheduler = PrayerScheduler(
         user_repo,
         group_repo,

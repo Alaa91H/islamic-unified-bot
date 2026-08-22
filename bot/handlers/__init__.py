@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """تسجيل كل المعالجات — إضافة ميزة = ملف + سطر هنا (Plugin Registry)."""
 
 import logging
@@ -21,6 +20,7 @@ class HandlerRegistry:
             islamic_names,
             islamic_tools,
             main_menu,
+            miniapp,
             owner,
             quran,
             quran_radio_handler,
@@ -29,6 +29,7 @@ class HandlerRegistry:
 
         # الترتيب يهم: main_menu أولًا (تسجّل /start الذي قد يُعاد توجيهه)
         main_menu.register(app, deps)
+        miniapp.register(app, deps)
         adhkar.register(app, deps)
         quran.register(app, deps)
         quran_text.register(app, deps)

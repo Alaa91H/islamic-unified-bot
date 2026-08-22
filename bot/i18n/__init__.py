@@ -1,6 +1,6 @@
 import json
-import os
 import logging
+import os
 from functools import lru_cache
 
 _LOCALES_DIR = os.path.join(

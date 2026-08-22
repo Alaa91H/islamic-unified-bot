@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """مستودع إعدادات المستخدمين (المحادثات الخاصة)."""
 
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from bot.db.connection import Database
 
@@ -26,7 +24,7 @@ class UserSettings:
     notifications_on: bool = True
     prelude_on: bool = False
     prelude_minutes: int = 5
-    enabled_prayers: List[str] = field(default_factory=lambda: list(_DEFAULT_PRAYERS))
+    enabled_prayers: list[str] = field(default_factory=lambda: list(_DEFAULT_PRAYERS))
 
 
 class UserSettingsRepo:
@@ -35,7 +33,7 @@ class UserSettingsRepo:
     def __init__(self, db: Database):
         self._db = db
 
-    async def get(self, user_id: int) -> Optional[UserSettings]:
+    async def get(self, user_id: int) -> UserSettings | None:
         row = await self._db.fetchone(
             "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
         )
@@ -91,24 +89,51 @@ class UserSettingsRepo:
         if bad:
             raise ValueError(f"حقول غير معروفة: {bad}")
 
-        sets: list[str] = []
-        params: list = []
-        for k, v in kwargs.items():
-            if k == "enabled_prayers":
-                v = json.dumps(v, ensure_ascii=False)
-            elif isinstance(v, bool):
-                v = int(v)
-            sets.append(f"{k} = ?")
-            params.append(v)
-        sets.append("updated_at = datetime('now')")
+        values = dict(kwargs)
+        if "enabled_prayers" in values:
+            values["enabled_prayers"] = json.dumps(
+                values["enabled_prayers"], ensure_ascii=False
+            )
+        for key, value in tuple(values.items()):
+            if isinstance(value, bool):
+                values[key] = int(value)
+
+        def field_params(field: str, current):
+            return field in values, values.get(field, current)
+
+        params = []
+        defaults = {
+            "city": "",
+            "method": "isna",
+            "asr_method": "standard",
+            "timezone": 0,
+            "language": "ar",
+            "notifications_on": 1,
+            "prelude_on": 0,
+            "prelude_minutes": 5,
+            "enabled_prayers": json.dumps(_DEFAULT_PRAYERS),
+        }
+        for field_name, default in defaults.items():
+            params.extend(field_params(field_name, default))
         params.append(user_id)
         await self._db.execute(
-            f"UPDATE user_settings SET {', '.join(sets)} WHERE user_id = ?",
+            """UPDATE user_settings SET
+               city = CASE WHEN ? THEN ? ELSE city END,
+               method = CASE WHEN ? THEN ? ELSE method END,
+               asr_method = CASE WHEN ? THEN ? ELSE asr_method END,
+               timezone = CASE WHEN ? THEN ? ELSE timezone END,
+               language = CASE WHEN ? THEN ? ELSE language END,
+               notifications_on = CASE WHEN ? THEN ? ELSE notifications_on END,
+               prelude_on = CASE WHEN ? THEN ? ELSE prelude_on END,
+               prelude_minutes = CASE WHEN ? THEN ? ELSE prelude_minutes END,
+               enabled_prayers = CASE WHEN ? THEN ? ELSE enabled_prayers END,
+               updated_at = datetime('now')
+               WHERE user_id = ?""",
             params,
         )
         return True
 
-    async def list_with_notifications(self) -> List[UserSettings]:
+    async def list_with_notifications(self) -> list[UserSettings]:
         """كل المستخدمين الذين فعّلوا التنبيهات (تستخدمهم حلقة الجدولة)."""
         rows = await self._db.fetchall(
             "SELECT * FROM user_settings WHERE notifications_on = 1"

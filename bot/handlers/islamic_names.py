@@ -40,7 +40,7 @@ def register(app, deps) -> None:
 
         elif action == "show":
             idx = int(parts[2])
-            i, name_ar, name_en, desc_ar, desc_en = NAMES_OF_ALLAH[idx - 1]
+            _i, name_ar, name_en, desc_ar, _desc_en = NAMES_OF_ALLAH[idx - 1]
             text = (
                 f"🤲 **الاسم {idx} من 99**\n───\n"
                 f"**{name_ar}**\n"

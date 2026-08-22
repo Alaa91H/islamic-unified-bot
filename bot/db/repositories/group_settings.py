@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """مستودع إعدادات المجموعات (voice chat)."""
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
 
 from bot.db.connection import Database
 
@@ -22,7 +20,7 @@ class GroupSettings:
     azan_source: str = "traditional"
     stream_quran_on: bool = False
     stop_stream_before_min: int = 0
-    linked_user_id: Optional[int] = None
+    linked_user_id: int | None = None
 
 
 class GroupSettingsRepo:
@@ -31,7 +29,7 @@ class GroupSettingsRepo:
     def __init__(self, db: Database):
         self._db = db
 
-    async def get(self, chat_id: int) -> Optional[GroupSettings]:
+    async def get(self, chat_id: int) -> GroupSettings | None:
         row = await self._db.fetchone(
             "SELECT * FROM group_settings WHERE chat_id = ?", (chat_id,)
         )
@@ -62,7 +60,7 @@ class GroupSettingsRepo:
             ),
         )
 
-    async def list_all(self) -> List[GroupSettings]:
+    async def list_all(self) -> list[GroupSettings]:
         rows = await self._db.fetchall("SELECT * FROM group_settings")
         return [self._row_to_model(r) for r in rows]
 

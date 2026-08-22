@@ -1,26 +1,30 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""مستودع سجل التنبيهات المُرسلة — لمنع التكرار بعد restart أو race condition.
+"""مستودع سجل تسليم الإشعارات.
 
-المفتاح الفريد (target_id, target_type, prayer, prayer_date) يضمن أن أي تنبيه
-لا يُرسل مرتين لنفس الهدف في نفس اليوم، حتى لو تداخلت دورتا جدولة.
-مفاتيح المقدمة (prelude) تستخدم مفتاحًا منفصلًا: prelude_<prayer>.
+يحافظ السجل على مفتاح فريد لكل هدف/حدث/يوم، ويضيف دورة حياة صغيرة:
+``processing → sent | failed``. يتيح ذلك حجز الحدث قبل الإرسال، ويمنع مثيلين
+من إرسال التنبيه نفسه في وقت واحد، مع تحريره لإعادة المحاولة عند الفشل.
 """
 
-import logging
+from __future__ import annotations
+
 from typing import Literal
 
 from bot.db.connection import Database
 
-logger = logging.getLogger(__name__)
 TargetType = Literal["user", "group"]
 
 
 class SentNotificationsRepo:
-    """يومية التنبيهات المُرسلة — idempotent وخيطيّ-آمن عبر UNIQUE constraint."""
+    """سجل الإشعارات بتسليم ذري وآمن لإعادة المحاولة."""
 
     def __init__(self, db: Database):
         self._db = db
+
+    @staticmethod
+    def _key(
+        target_id: int, target_type: TargetType, prayer: str, prayer_date: str
+    ) -> tuple[int, TargetType, str, str]:
+        return target_id, target_type, prayer, prayer_date
 
     async def already_sent(
         self,
@@ -29,12 +33,13 @@ class SentNotificationsRepo:
         prayer: str,
         prayer_date: str,
     ) -> bool:
-        """هل أُرسل هذا التنبيه فعلًا (نفس الهدف/الصلاة/اليوم)؟"""
+        """هل اكتمل إرسال هذا التنبيه بالفعل؟"""
         row = await self._db.fetchone(
             """SELECT 1 FROM sent_notifications
                WHERE target_id=? AND target_type=? AND prayer=? AND prayer_date=?
+                 AND status='sent'
                LIMIT 1""",
-            (target_id, target_type, prayer, prayer_date),
+            self._key(target_id, target_type, prayer, prayer_date),
         )
         return row is not None
 
@@ -45,17 +50,116 @@ class SentNotificationsRepo:
         prayer: str,
         prayer_date: str,
     ) -> bool:
-        """يسجّل الإرسال. يُرجع True إذا سُجّل الآن، False إذا كان مسجّلًا سابقًا.
+        """واجهة متوافقة لتسجيل حدث مكتمل عند عدم وجود سجل سابق."""
+        cursor = await self._db.execute(
+            """INSERT INTO sent_notifications
+                   (target_id, target_type, prayer, prayer_date, status, claimed_at)
+               VALUES (?, ?, ?, ?, 'sent', datetime('now'))
+               ON CONFLICT(target_id, target_type, prayer, prayer_date) DO NOTHING""",
+            self._key(target_id, target_type, prayer, prayer_date),
+        )
+        return cursor.rowcount == 1
 
-        آمن ضد التزامن: UNIQUE constraint يضمن نجاح إدراج واحد فقط.
+    async def claim_delivery(
+        self,
+        target_id: int,
+        target_type: TargetType,
+        prayer: str,
+        prayer_date: str,
+        *,
+        stale_after_seconds: int = 300,
+        max_attempts: int = 5,
+    ) -> bool:
+        """حجز حدث للتسليم.
+
+        لا ينجح الحجز إلا عند عدم وجود سجل أو إذا كان السجل فاشلًا أو عالقًا
+        في حالة processing لمدة تجاوزت المهلة. ينفذ القرار داخل SQLite نفسها.
         """
-        try:
-            await self._db.execute(
-                """INSERT INTO sent_notifications
-                   (target_id, target_type, prayer, prayer_date)
-                   VALUES (?,?,?,?)""",
-                (target_id, target_type, prayer, prayer_date),
-            )
-            return True
-        except Exception:  # IntegrityError → موجود مسبقًا
-            return False
+        cursor = await self._db.execute(
+            """INSERT INTO sent_notifications
+                   (target_id, target_type, prayer, prayer_date, status, claimed_at, attempts)
+               VALUES (?, ?, ?, ?, 'processing', datetime('now'), 1)
+               ON CONFLICT(target_id, target_type, prayer, prayer_date) DO UPDATE SET
+                   status='processing',
+                   claimed_at=datetime('now'),
+                   attempts=sent_notifications.attempts + 1,
+                   last_error=NULL
+               WHERE (
+                      sent_notifications.status='failed'
+                      AND sent_notifications.retry_class='transient'
+                      AND sent_notifications.attempts < ?
+                      AND (
+                          sent_notifications.next_retry_at IS NULL
+                          OR sent_notifications.next_retry_at <= datetime('now')
+                      )
+                  )
+                  OR (
+                      sent_notifications.status='processing'
+                      AND sent_notifications.attempts < ?
+                      AND sent_notifications.claimed_at < datetime('now', ?)
+                  )""",
+            (
+                *self._key(target_id, target_type, prayer, prayer_date),
+                max_attempts,
+                max_attempts,
+                f"-{stale_after_seconds} seconds",
+            ),
+        )
+        return cursor.rowcount == 1
+
+    async def complete_delivery(
+        self,
+        target_id: int,
+        target_type: TargetType,
+        prayer: str,
+        prayer_date: str,
+    ) -> None:
+        """وضع الحدث المحجوز في حالة sent بعد نجاح الإرسال."""
+        await self._db.execute(
+            """UPDATE sent_notifications
+               SET status='sent', sent_at=datetime('now'), last_error=NULL,
+                   next_retry_at=NULL
+               WHERE target_id=? AND target_type=? AND prayer=? AND prayer_date=?""",
+            self._key(target_id, target_type, prayer, prayer_date),
+        )
+
+    async def fail_delivery(
+        self,
+        target_id: int,
+        target_type: TargetType,
+        prayer: str,
+        prayer_date: str,
+        error: Exception,
+        *,
+        retryable: bool = True,
+    ) -> None:
+        """تسجيل فشل بمهلة تصاعدية، أو إنهاؤه كفشل دائم عند عدم قابلية الإعادة."""
+        await self._db.execute(
+            """UPDATE sent_notifications
+               SET status='failed', last_error=?,
+                   retry_class=?,
+                   next_retry_at = CASE
+                       WHEN ? = 0 THEN NULL
+                       WHEN attempts <= 1 THEN datetime('now', '+30 seconds')
+                       WHEN attempts = 2 THEN datetime('now', '+1 minute')
+                       WHEN attempts = 3 THEN datetime('now', '+2 minutes')
+                       WHEN attempts = 4 THEN datetime('now', '+5 minutes')
+                       ELSE datetime('now', '+15 minutes')
+                   END
+               WHERE target_id=? AND target_type=? AND prayer=? AND prayer_date=?""",
+            (
+                str(error)[:500],
+                "transient" if retryable else "permanent",
+                int(retryable),
+                *self._key(target_id, target_type, prayer, prayer_date),
+            ),
+        )
+
+    async def delivery_metrics(self) -> dict[str, int]:
+        """إرجاع عدادات outbox الموجزة للرصد دون كشف أي محتوى مستخدم."""
+        rows = await self._db.fetchall(
+            "SELECT status, COUNT(*) AS count FROM sent_notifications GROUP BY status"
+        )
+        metrics = {"processing": 0, "sent": 0, "failed": 0}
+        metrics.update({row["status"]: row["count"] for row in rows})
+        return metrics

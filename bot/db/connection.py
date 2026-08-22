@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """اتصال SQLite (aiosqlite) + منفّذ migrations المرقّمة.
 
 يوفّر غلافًا رفيعًا يُسهّل الاختبار والعزل. كل الـ repositories تأخذ مثيل Database
@@ -8,8 +7,9 @@
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 logger = logging.getLogger(__name__)
 _MIGRATIONS_DIR = Path(__file__).parent / "migrations"

@@ -65,3 +65,31 @@ async def test_concurrent_mark_sent_is_safe(repo):
     )
     assert results.count(True) == 1
     assert results.count(False) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_delivery_waits_for_scheduled_retry(repo):
+    key = (9, "user", "isha", "2026-08-22")
+    assert await repo.claim_delivery(*key) is True
+    await repo.fail_delivery(*key, RuntimeError("temporary gateway error"))
+
+    assert await repo.claim_delivery(*key) is False
+
+
+@pytest.mark.asyncio
+async def test_permanent_failure_is_not_reclaimed(repo):
+    key = (10, "user", "maghrib", "2026-08-22")
+    assert await repo.claim_delivery(*key) is True
+    await repo.fail_delivery(*key, RuntimeError("chat blocked bot"), retryable=False)
+
+    assert await repo.claim_delivery(*key) is False
+
+
+@pytest.mark.asyncio
+async def test_delivery_metrics_report_all_states(repo):
+    await repo.mark_sent(20, "user", "fajr", "2026-08-22")
+    assert await repo.claim_delivery(21, "user", "dhuhr", "2026-08-22") is True
+    assert await repo.claim_delivery(22, "user", "asr", "2026-08-22") is True
+    await repo.fail_delivery(22, "user", "asr", "2026-08-22", RuntimeError("error"))
+
+    assert await repo.delivery_metrics() == {"processing": 1, "sent": 1, "failed": 1}

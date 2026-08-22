@@ -5,7 +5,6 @@
 """
 
 import logging
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,7 @@ class NullStreamManager:
         url: str,
         title: str = "بث",
         loop: bool = False,
-        duration_min: Optional[int] = None,
+        duration_min: int | None = None,
         attempts: int = 0,
     ) -> bool:
         logger.info("ℹ️ البث الصوتي غير متاح (py-tgcalls غير مثبت)")
@@ -37,10 +36,10 @@ class NullStreamManager:
     async def stop(self, chat_id: int) -> bool:
         return False
 
-    def active_streams(self) -> Dict[int, dict]:
+    def active_streams(self) -> dict[int, dict]:
         return {}
 
-    def get_local_files(self, folder_path: str = None) -> Dict:
+    def get_local_files(self, folder_path: str | None = None) -> dict:
         from pathlib import Path
 
         if folder_path is None:
@@ -57,5 +56,5 @@ class NullStreamManager:
                         "size": file.stat().st_size,
                     }
         except Exception as e:
-            logger.error("❌ خطأ في قراءة المجلد %s: %s", folder_path, e)
+            logger.exception("❌ خطأ في قراءة المجلد %s: %s", folder_path, e)
         return files

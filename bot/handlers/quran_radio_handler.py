@@ -16,6 +16,7 @@ def _radio_keyboard(
     chat_id: int, is_paused: bool, shuffle_on: bool, quality: str = "high"
 ):
     from pyrogram.types import InlineKeyboardButton
+
     from bot.services.quran_radio import AUDIO_QUALITY_LABELS
 
     q_label = AUDIO_QUALITY_LABELS.get(quality, quality)
@@ -58,6 +59,7 @@ def _radio_keyboard(
 
 def _reciters_keyboard(chat_id: int):
     from pyrogram.types import InlineKeyboardButton
+
     from bot.data.sources import QURANIC_RECITERS
 
     kb = []

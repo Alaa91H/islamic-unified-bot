@@ -6,7 +6,9 @@ def register(app, deps) -> None:
 
     settings = deps.settings
     stream_manager = deps.stream_manager
+    sent_repo = deps.sent_repo
     from bot.streaming import HAS_STREAMING
+    from bot.time_utils import utc_now
 
     if not HAS_STREAMING:
         _register_streaming_unavailable(app, settings)
@@ -102,16 +104,20 @@ def register(app, deps) -> None:
     @safe_handler()
     async def status_cmd(client, message):
         streams = stream_manager.active_streams()
+        delivery = await sent_repo.delivery_metrics()
+        text = "📊 **الحالة التشغيلية:**\n"
+        text += (
+            f"📨 التسليم: ✅ {delivery['sent']} | "
+            f"⏳ {delivery['processing']} | ⚠️ {delivery['failed']}\n\n"
+        )
         if not streams:
-            await message.reply_text("✅ لا توجد بثات نشطة")
+            await message.reply_text(text + "✅ لا توجد بثات نشطة")
             return
-        text = "📊 **البثات النشطة:**\n\n"
+        text += "**البثات النشطة:**\n\n"
         for cid, info in streams.items():
             text += f"📍 `{cid}`\n🎵 {info.get('title', '')}\n"
             if "started_at" in info:
-                mins = (
-                    __import__("datetime").datetime.now() - info["started_at"]
-                ).seconds // 60
+                mins = (utc_now() - info["started_at"]).seconds // 60
                 text += f"⏱️ {mins}د\n"
         await message.reply_text(text)
 

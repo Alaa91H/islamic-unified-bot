@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime
 
 
 def _get_logger():
@@ -12,18 +13,18 @@ def _get_logger():
 
 class PrayerTimeCalculator:
     __slots__ = (
+        "_calc_cache",
+        "_city_name",
+        "_dst",
+        "asr_method",
         "latitude",
         "longitude_val",
-        "timezone",
-        "_dst",
-        "_city_name",
         "method",
-        "asr_method",
         "method_config",
-        "_calc_cache",
+        "timezone",
     )
 
-    CALCULATION_METHODS = {
+    CALCULATION_METHODS: dict[str, dict[str, float | str]] = {
         "karachi": {
             "name": "جامعة الملك عبدالعزيز - كراتشي (University of Islamic Sciences, Karachi)",
             "fajr_angle": 18,
@@ -61,7 +62,7 @@ class PrayerTimeCalculator:
         },
     }
 
-    PRAYERS = [
+    PRAYERS: tuple[str, ...] = (
         "fajr",
         "sunrise",
         "dhuhr",
@@ -71,8 +72,8 @@ class PrayerTimeCalculator:
         "isha",
         "imsak",
         "midnight",
-    ]
-    PRAYER_NAMES = {
+    )
+    PRAYER_NAMES: dict[str, str] = {
         "fajr": "🌅 الفجر",
         "sunrise": "🌄 الشروق",
         "dhuhr": "☀️ الظهر",
@@ -127,10 +128,8 @@ class PrayerTimeCalculator:
         g = math.radians((357.52910 + 0.98564724 * D) % 360)
         q = math.radians((280.46645 + 0.9856474 * D) % 360)
         L = math.radians(
-            (
-                (math.degrees(q) + 1.914602 * math.sin(g) - 0.020708 * math.sin(2 * g))
-                % 360
-            )
+            (math.degrees(q) + 1.914602 * math.sin(g) - 0.020708 * math.sin(2 * g))
+            % 360
         )
         T = D / 36525
         e = math.radians(23.439291 - 0.0130042 * T)
@@ -146,7 +145,7 @@ class PrayerTimeCalculator:
         m = date.month
         return 4 <= m <= 10
 
-    def calculate_times(self, date):
+    def calculate_times(self, date: datetime) -> dict[str, str]:
         import math
 
         date_key = date.strftime("%Y%m%d")
@@ -157,12 +156,15 @@ class PrayerTimeCalculator:
         declination, eqtime = self._sun_declination_and_eqtime(jdate)
         latitude_rad = self.latitude
         declination_rad = math.radians(declination)
-        tz = self.timezone
-        if self._dst:
+        # إذا وصلنا وقت محلي واعٍ من طبقة الجدولة، نستخدم إزاحته الفعلية
+        # حتى تعكس قواعد المنطقة الزمنية والتحولات الصيفية بدقة.
+        offset = date.utcoffset() if date.tzinfo is not None else None
+        tz = offset.total_seconds() / 3600 if offset is not None else self.timezone
+        if offset is None and self._dst:
             tz += 1
         dhuhr_hour = 12 + tz - self.longitude_val / 15 - eqtime / 60
 
-        def get_hour_angle(angle_or_factor, is_asr=False):
+        def get_hour_angle(angle_or_factor: float, is_asr: bool = False) -> float:
             if is_asr:
                 term = angle_or_factor + math.tan(abs(latitude_rad - declination_rad))
                 cos_ha = (
@@ -223,7 +225,8 @@ class PrayerTimeCalculator:
         self._calc_cache[date_key] = times
         return times
 
-    def _decimal_to_time(self, decimal_hour: float) -> str:
+    @staticmethod
+    def _decimal_to_time(decimal_hour: float) -> str:
         decimal_hour = decimal_hour % 24
         hours = int(decimal_hour)
         minutes = round((decimal_hour - hours) * 60)
@@ -253,15 +256,17 @@ class PrayerTimeAPI:
         url = f"https://api.aladhan.com/v1/timings/{date.strftime('%d-%m-%Y')}"
         params = {"latitude": latitude, "longitude": longitude, "method": method}
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(
                     url, params=params, timeout=aiohttp.ClientTimeout(total=5)
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if data.get("code") == 200:
-                            return data["data"]["timings"]
-                    return None
+                ) as resp,
+            ):
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("code") == 200:
+                        return data["data"]["timings"]
+                return None
         except Exception as e:
             _get_logger().warning("Aladhan API error: %s", e)
             return None
@@ -291,17 +296,19 @@ class OnlinePrayerTimes:
             "date": date.strftime("%d-%m-%Y"),
         }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(
                     url, params=params, timeout=aiohttp.ClientTimeout(total=5)
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if data.get("code") == 200:
-                            result = self._normalize_timings(data["data"]["timings"])
-                            self._set_cache(cache_key, result)
-                            return result
-                    return None
+                ) as resp,
+            ):
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("code") == 200:
+                        result = self._normalize_timings(data["data"]["timings"])
+                        self._set_cache(cache_key, result)
+                        return result
+                return None
         except Exception as e:
             _get_logger().warning("Aladhan by-city API error: %s", e)
             return None
@@ -325,19 +332,21 @@ class OnlinePrayerTimes:
             "method": method,
         }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(
                     url, params=params, timeout=aiohttp.ClientTimeout(total=5)
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        items = data.get("items", [])
-                        if items:
-                            timings = items[0]
-                            result = self._normalize_timings(timings)
-                            self._set_cache(cache_key, result)
-                            return result
-                    return None
+                ) as resp,
+            ):
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get("items", [])
+                    if items:
+                        timings = items[0]
+                        result = self._normalize_timings(timings)
+                        self._set_cache(cache_key, result)
+                        return result
+                return None
         except Exception as e:
             _get_logger().warning("MuslimSalat API error: %s", e)
             return None
@@ -388,7 +397,9 @@ class PrayerTimeVerifier:
 
     @staticmethod
     def verify(
-        local_times: dict, aladhan_times: dict = None, muslimsalat_times: dict = None
+        local_times: dict,
+        aladhan_times: dict | None = None,
+        muslimsalat_times: dict | None = None,
     ):
         logger = _get_logger()
         prayers = ["fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"]
@@ -431,12 +442,12 @@ class PrayerTimeVerifier:
 
             max_count = max(counts.values())
             if max_count >= 2:
-                chosen_val = [v for v, c in counts.items() if c == max_count][0]
+                chosen_val = next(v for v, c in counts.items() if c == max_count)
                 chosen_sources = [s for s, v in values.items() if v == chosen_val]
                 chosen_src = chosen_sources[0]
             else:
                 chosen_src = (
-                    "aladhan" if "aladhan" in values else list(values.keys())[0]
+                    "aladhan" if "aladhan" in values else next(iter(values.keys()))
                 )
                 chosen_val = values[chosen_src]
 
@@ -491,7 +502,7 @@ def _load_json_cities():
     if not os.path.exists(_JSON_PATH):
         return None
     try:
-        with open(_JSON_PATH, "r", encoding="utf-8") as f:
+        with open(_JSON_PATH, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
@@ -558,7 +569,7 @@ class CityCoordinates:
         query = query.lower()
         cities = cls._load_cities()
         results = []
-        for city, data in cities.items():
+        for city in cities:
             if query in city.lower():
                 results.append(city)
         return results

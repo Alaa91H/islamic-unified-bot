@@ -2,7 +2,6 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +202,7 @@ def _cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.json"
 
 
-async def _fetch_json(url: str, cache_key: str, ttl_hours: int = 24) -> Optional[dict]:
+async def _fetch_json(url: str, cache_key: str, ttl_hours: int = 24) -> dict | None:
     path = _cache_path(cache_key)
     if path.exists():
         try:
@@ -217,16 +216,16 @@ async def _fetch_json(url: str, cache_key: str, ttl_hours: int = 24) -> Optional
     try:
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=15)
-            ) as resp:
-                if resp.status != 200:
-                    logger.error("API error %d: %s", resp.status, url)
-                    return None
-                data = await resp.json()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp,
+        ):
+            if resp.status != 200:
+                logger.error("API error %d: %s", resp.status, url)
+                return None
+            data = await resp.json()
     except Exception as e:
-        logger.error("Fetch error: %s - %s", url, e)
+        logger.exception("Fetch error: %s - %s", url, e)
         return None
 
     data["_cached_at"] = time.time()
@@ -239,7 +238,7 @@ async def _fetch_json(url: str, cache_key: str, ttl_hours: int = 24) -> Optional
     return data
 
 
-async def get_ayah_text(surah: int, ayah: int) -> Optional[str]:
+async def get_ayah_text(surah: int, ayah: int) -> str | None:
     url = f"https://api.alquran.cloud/v1/ayah/{surah}:{ayah}/ar"
     data = await _fetch_json(url, f"ayah_{surah}_{ayah}", ttl_hours=720)
     if data and "data" in data:
@@ -249,7 +248,7 @@ async def get_ayah_text(surah: int, ayah: int) -> Optional[str]:
 
 async def get_ayah_translation(
     surah: int, ayah: int, lang: str = "en.asad"
-) -> Optional[str]:
+) -> str | None:
     url = f"https://api.alquran.cloud/v1/ayah/{surah}:{ayah}/{lang}"
     data = await _fetch_json(url, f"ayah_{surah}_{ayah}_{lang}", ttl_hours=720)
     if data and "data" in data:
@@ -257,7 +256,7 @@ async def get_ayah_translation(
     return None
 
 
-async def get_surah_short(surah: int) -> Optional[dict]:
+async def get_surah_short(surah: int) -> dict | None:
     url = f"https://api.alquran.cloud/v1/surah/{surah}/ar"
     data = await _fetch_json(url, f"surah_{surah}", ttl_hours=720)
     if data and "data" in data:
@@ -267,7 +266,7 @@ async def get_surah_short(surah: int) -> Optional[dict]:
 
 async def get_tafsir(
     surah: int, ayah: int, tafsir_id: str = "ar-muyassar"
-) -> Optional[str]:
+) -> str | None:
     url = f"https://api.alquran.cloud/v1/tafsir/{tafsir_id}/{surah}:{ayah}"
     data = await _fetch_json(url, f"tafsir_{tafsir_id}_{surah}_{ayah}", ttl_hours=720)
     if data and "data" in data:
@@ -284,7 +283,7 @@ async def search_quran(keyword: str, lang: str = "ar") -> list[dict]:
     return []
 
 
-async def get_juz(juz_number: int) -> Optional[list[dict]]:
+async def get_juz(juz_number: int) -> list[dict] | None:
     url = f"https://api.alquran.cloud/v1/juz/{juz_number}/ar"
     data = await _fetch_json(url, f"juz_{juz_number}", ttl_hours=720)
     if data and "data" in data:
