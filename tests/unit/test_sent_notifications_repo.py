@@ -92,4 +92,25 @@ async def test_delivery_metrics_report_all_states(repo):
     assert await repo.claim_delivery(22, "user", "asr", "2026-08-22") is True
     await repo.fail_delivery(22, "user", "asr", "2026-08-22", RuntimeError("error"))
 
-    assert await repo.delivery_metrics() == {"processing": 1, "sent": 1, "failed": 1}
+    assert await repo.delivery_metrics() == {
+        "processing": 1,
+        "sent": 1,
+        "failed": 1,
+        "transient_failed": 1,
+        "permanent_failed": 0,
+        "retry_due": 0,
+        "oldest_processing_age_seconds": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_delivery_metrics_distinguish_permanent_failures(repo):
+    key = (23, "user", "maghrib", "2026-08-22")
+    assert await repo.claim_delivery(*key) is True
+    await repo.fail_delivery(*key, RuntimeError("chat blocked bot"), retryable=False)
+
+    metrics = await repo.delivery_metrics()
+
+    assert metrics["permanent_failed"] == 1
+    assert metrics["transient_failed"] == 0
+    assert metrics["retry_due"] == 0

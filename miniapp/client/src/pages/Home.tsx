@@ -44,6 +44,13 @@ type TodayPayload = {
   next_prayer: { key: string; name: string; time: string; minutes_until: number; is_tomorrow: boolean };
 };
 
+type CityOption = {
+  name: string;
+  country: string;
+  method: string;
+  method_name: string;
+};
+
 const PRAYER_ICONS: Record<string, string> = {
   fajr: "◔", sunrise: "◒", dhuhr: "●", asr: "◐", maghrib: "◓", isha: "☾",
 };
@@ -68,6 +75,9 @@ export default function Home() {
   const [saveError, setSaveError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [today, setToday] = useState<TodayPayload | null>(null);
+  const [cities, setCities] = useState<CityOption[]>([]);
+  const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [isLoadingToday, setIsLoadingToday] = useState(Boolean(API_BASE));
   const [todayError, setTodayError] = useState(false);
   const isArabic = language === "ar";
@@ -108,7 +118,7 @@ export default function Home() {
   );
 
   const handleSave = useCallback(async () => {
-    const city = today?.city.name ?? DEFAULT_CITY;
+    const city = selectedCity || today?.city.name || DEFAULT_CITY;
     const apiPayload = { language, notifications_on: notifications, city };
     const fallbackPayload = { language, notifications, city, source: "miniapp" };
     const telegram = window.Telegram?.WebApp;
@@ -132,13 +142,14 @@ export default function Home() {
         throw new Error("Telegram WebApp is unavailable");
       }
       setSaved(true);
+      setRefreshNonce((nonce) => nonce + 1);
       window.setTimeout(() => setSaved(false), 2800);
     } catch {
       setSaveError(true);
     } finally {
       setIsSaving(false);
     }
-  }, [language, notifications, today?.city.name]);
+  }, [language, notifications, selectedCity, today?.city.name]);
 
   useEffect(() => {
     const app = window.Telegram?.WebApp;
@@ -162,13 +173,22 @@ export default function Home() {
     const controller = new AbortController();
     const loadToday = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/miniapp/today`, {
-          headers: { "X-Telegram-Init-Data": initData },
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("Could not load today data");
-        const data: TodayPayload = await response.json();
+        const [todayResponse, citiesResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/miniapp/today`, {
+            headers: { "X-Telegram-Init-Data": initData },
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE}/api/miniapp/cities`, {
+            headers: { "X-Telegram-Init-Data": initData },
+            signal: controller.signal,
+          }),
+        ]);
+        if (!todayResponse.ok || !citiesResponse.ok) throw new Error("Could not load Mini App data");
+        const data: TodayPayload = await todayResponse.json();
+        const cityData: { cities: CityOption[] } = await citiesResponse.json();
         setToday(data);
+        setCities(cityData.cities);
+        setSelectedCity(data.city.name);
         setLanguage(data.preferences.language);
         setNotifications(data.preferences.notifications_on);
       } catch (error) {
@@ -179,7 +199,7 @@ export default function Home() {
     };
     void loadToday();
     return () => controller.abort();
-  }, []);
+  }, [refreshNonce]);
 
   const cityLabel = today ? [today.city.name, today.city.country].filter(Boolean).join("، ") : "—";
   const profileName = today?.profile.username ? `@${today.profile.username}` : "";
@@ -259,10 +279,20 @@ export default function Home() {
           <span className="setting-copy"><strong>{copy.alert}</strong><small>{copy.alertHint}</small></span>
           <span className={`toggle ${notifications ? "on" : ""}`} aria-checked={notifications} role="switch"><span /></span>
         </button>
-        <div className="setting-row">
+        <label className="setting-row city-setting">
           <span className="setting-icon"><MapPin size={19} /></span>
           <span className="setting-copy"><strong>{copy.city}</strong><small>{cityLabel} · {today?.city.method_name ?? "—"}</small></span>
-        </div>
+          <select
+            className="city-select"
+            aria-label={copy.city}
+            value={selectedCity}
+            onChange={(event) => setSelectedCity(event.target.value)}
+            disabled={isLoadingToday || cities.length === 0}
+          >
+            {cities.length === 0 && <option value={selectedCity}>{selectedCity}</option>}
+            {cities.map((city) => <option value={city.name} key={city.name}>{city.name} — {city.country}</option>)}
+          </select>
+        </label>
       </section>
 
       <button className="save-button" type="button" onClick={handleSave} disabled={isSaving} aria-busy={isSaving}>

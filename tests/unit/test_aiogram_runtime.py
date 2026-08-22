@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from bot.aiogram_runtime import (
+    _home_keyboard,
     _name_detail,
     _names_keyboard,
     build_aiogram_app,
@@ -35,6 +36,16 @@ def test_aiogram_names_keyboard_and_detail_use_only_valid_name_indices():
     assert "الاسم 1" in detail[0]
     assert _name_detail(0) is None
     assert _name_detail(100) is None
+
+
+def test_aiogram_home_keyboard_exposes_only_callbacks_implemented_by_pilot():
+    callbacks = {
+        button.callback_data
+        for row in _home_keyboard().inline_keyboard
+        for button in row
+    }
+
+    assert callbacks == {"names:page:0", "about"}
 
 
 def test_settings_rejects_aiogram_runtime_with_voice_streaming(monkeypatch):
