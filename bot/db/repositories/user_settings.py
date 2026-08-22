@@ -89,19 +89,46 @@ class UserSettingsRepo:
         if bad:
             raise ValueError(f"حقول غير معروفة: {bad}")
 
-        sets: list[str] = []
-        params: list = []
-        for k, v in kwargs.items():
-            if k == "enabled_prayers":
-                v = json.dumps(v, ensure_ascii=False)
-            elif isinstance(v, bool):
-                v = int(v)
-            sets.append(f"{k} = ?")
-            params.append(v)
-        sets.append("updated_at = datetime('now')")
+        values = dict(kwargs)
+        if "enabled_prayers" in values:
+            values["enabled_prayers"] = json.dumps(
+                values["enabled_prayers"], ensure_ascii=False
+            )
+        for key, value in tuple(values.items()):
+            if isinstance(value, bool):
+                values[key] = int(value)
+
+        def field_params(field: str, current):
+            return field in values, values.get(field, current)
+
+        params = []
+        defaults = {
+            "city": "",
+            "method": "isna",
+            "asr_method": "standard",
+            "timezone": 0,
+            "language": "ar",
+            "notifications_on": 1,
+            "prelude_on": 0,
+            "prelude_minutes": 5,
+            "enabled_prayers": json.dumps(_DEFAULT_PRAYERS),
+        }
+        for field_name, default in defaults.items():
+            params.extend(field_params(field_name, default))
         params.append(user_id)
         await self._db.execute(
-            f"UPDATE user_settings SET {', '.join(sets)} WHERE user_id = ?",
+            """UPDATE user_settings SET
+               city = CASE WHEN ? THEN ? ELSE city END,
+               method = CASE WHEN ? THEN ? ELSE method END,
+               asr_method = CASE WHEN ? THEN ? ELSE asr_method END,
+               timezone = CASE WHEN ? THEN ? ELSE timezone END,
+               language = CASE WHEN ? THEN ? ELSE language END,
+               notifications_on = CASE WHEN ? THEN ? ELSE notifications_on END,
+               prelude_on = CASE WHEN ? THEN ? ELSE prelude_on END,
+               prelude_minutes = CASE WHEN ? THEN ? ELSE prelude_minutes END,
+               enabled_prayers = CASE WHEN ? THEN ? ELSE enabled_prayers END,
+               updated_at = datetime('now')
+               WHERE user_id = ?""",
             params,
         )
         return True

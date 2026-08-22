@@ -7,7 +7,7 @@
 button { font: inherit; }
 body { margin: 0; min-width: 320px; background: #f5f0e6; }
 .mihrab-app { position: relative; min-height: 100vh; max-width: 760px; margin: 0 auto; overflow: hidden; padding: 22px 20px 34px; background: linear-gradient(145deg, #f9f5ed 0%, #efe8da 100%); }
-.mihrab-app::before { content: ""; pointer-events: none; position: absolute; inset: 0; opacity: .26; background-image: url('/manus-storage/prayer-card-texture_20bb6268.png'); background-size: 330px; mix-blend-mode: multiply; }
+.mihrab-app::before { content: ""; pointer-events: none; position: absolute; inset: 0; opacity: .26; background-image: url('/assets/prayer-card-texture.png'); background-size: 330px; mix-blend-mode: multiply; }
 .mihrab-app > *:not(.ambient) { position: relative; z-index: 1; }
 .ambient { position: absolute; border-radius: 999px; filter: blur(4px); opacity: .48; }
 .ambient-one { width: 190px; height: 190px; background: #e5c89e; top: 155px; left: -100px; }

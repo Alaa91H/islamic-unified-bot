@@ -68,11 +68,76 @@ class AdhkarSettingsRepo:
         )
 
     async def update_partial(self, chat_id: int, **kwargs) -> None:
-        sets = ", ".join(f"{k}=?" for k in kwargs)
-        vals = [*list(kwargs.values()), chat_id]
+        if not kwargs:
+            return
+        allowed = {
+            "interval_enabled",
+            "interval_minutes",
+            "morning_enabled",
+            "morning_time",
+            "evening_enabled",
+            "evening_time",
+            "friday_enabled",
+            "friday_time",
+            "last_adhkar_category",
+            "last_sent_at",
+        }
+        unknown = set(kwargs) - allowed
+        if unknown:
+            raise ValueError(f"حقول إعدادات أذكار غير معروفة: {unknown}")
+        for field in ("interval_minutes",):
+            if field in kwargs and (
+                not isinstance(kwargs[field], int) or not 1 <= kwargs[field] <= 1440
+            ):
+                raise ValueError("interval_minutes يجب أن يكون بين 1 و1440")
+        for field in ("morning_time", "evening_time", "friday_time"):
+            if field in kwargs:
+                value = kwargs[field]
+                if (
+                    not isinstance(value, str)
+                    or len(value) != 5
+                    or value[2] != ":"
+                    or not value.replace(":", "").isdigit()
+                    or not 0 <= int(value[:2]) <= 23
+                    or not 0 <= int(value[3:]) <= 59
+                ):
+                    raise ValueError(f"{field} يجب أن يكون بتنسيق HH:MM")
+        values = {
+            key: int(value)
+            if key.endswith("_enabled") and isinstance(value, bool)
+            else value
+            for key, value in kwargs.items()
+        }
+        defaults = {
+            "interval_enabled": 0,
+            "interval_minutes": 20,
+            "morning_enabled": 0,
+            "morning_time": "06:00",
+            "evening_enabled": 0,
+            "evening_time": "18:00",
+            "friday_enabled": 0,
+            "friday_time": "10:00",
+            "last_adhkar_category": None,
+            "last_sent_at": None,
+        }
+        vals = []
+        for field_name, default in defaults.items():
+            vals.extend((field_name in values, values.get(field_name, default)))
+        vals.append(chat_id)
         await self._db.execute(
-            f"UPDATE adhkar_settings SET {sets}, updated_at=datetime('now') "
-            f"WHERE chat_id=?",
+            """UPDATE adhkar_settings SET
+               interval_enabled = CASE WHEN ? THEN ? ELSE interval_enabled END,
+               interval_minutes = CASE WHEN ? THEN ? ELSE interval_minutes END,
+               morning_enabled = CASE WHEN ? THEN ? ELSE morning_enabled END,
+               morning_time = CASE WHEN ? THEN ? ELSE morning_time END,
+               evening_enabled = CASE WHEN ? THEN ? ELSE evening_enabled END,
+               evening_time = CASE WHEN ? THEN ? ELSE evening_time END,
+               friday_enabled = CASE WHEN ? THEN ? ELSE friday_enabled END,
+               friday_time = CASE WHEN ? THEN ? ELSE friday_time END,
+               last_adhkar_category = CASE WHEN ? THEN ? ELSE last_adhkar_category END,
+               last_sent_at = CASE WHEN ? THEN ? ELSE last_sent_at END,
+               updated_at = datetime('now')
+               WHERE chat_id=?""",
             vals,
         )
 

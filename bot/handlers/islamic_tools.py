@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from bot.decorators import safe_handler
+from bot.time_utils import city_local_time, utc_now
 
 _usage_counts: dict = defaultdict(int)
 _USAGE_FILE = os.path.join(
@@ -108,7 +109,7 @@ def register(app, deps) -> None:
         from bot.data.duas import ARABIC_MONTHS
 
         _track_usage("hijri")
-        today = date.today()
+        today = utc_now().date()
         h = _to_hijri(today)
         if not h:
             await message.reply_text("❌ تعذر حساب التاريخ الهجري")
@@ -305,7 +306,7 @@ def register(app, deps) -> None:
         from bot.data.zakat import RAMADAN_DUAS
 
         _track_usage("ramadan")
-        today = date.today()
+        today = utc_now().date()
         h = _to_hijri(today)
         ramadan_info = ""
         if h:
@@ -411,7 +412,7 @@ def register(app, deps) -> None:
         from bot.data.duas import ARABIC_MONTHS
 
         _track_usage("jummah")
-        today = datetime.now()
+        today = utc_now()
         friday = 4
         days_ahead = (friday - today.weekday()) % 7
         hijri = _to_hijri(today)
@@ -436,7 +437,7 @@ def register(app, deps) -> None:
         _track_usage("calendar")
         from bot.data.duas import ARABIC_MONTHS
 
-        today = date.today()
+        today = utc_now().date()
         h = _to_hijri(today)
         h_str = ""
         if h:
@@ -489,7 +490,7 @@ def register(app, deps) -> None:
         from bot.data.surahs import SURAHS
 
         _track_usage("daily")
-        today = date.today()
+        today = utc_now().date()
         h = _to_hijri(today)
         h_str = ""
         if h:
@@ -535,8 +536,8 @@ def register(app, deps) -> None:
         if not coords:
             await message.reply_text(f"❌ المدينة '{city_name}' غير موجودة")
             return
-        today = datetime.now()
-        year, month = today.year, today.month
+        local_now = city_local_time(utc_now(), city_name, coords)
+        year, month = local_now.year, local_now.month
         method = coords.get("method", "mwl")
         calc = PrayerTimeCalculator(
             coords["lat"],
@@ -553,7 +554,13 @@ def register(app, deps) -> None:
             last_day = datetime(year, month + 1, 1) - timedelta(days=1)
         for d in range(1, last_day.day + 1, 3):
             dates_to_calc = [
-                datetime(year, month, min(d + i, last_day.day)) for i in range(3)
+                datetime(
+                    year,
+                    month,
+                    min(d + i, last_day.day),
+                    tzinfo=local_now.tzinfo,
+                )
+                for i in range(3)
             ]
             row = ""
             for dt in dates_to_calc:
@@ -601,7 +608,8 @@ def register(app, deps) -> None:
             dst=coords.get("dst", False),
             city_name=city,
         )
-        times = calc.calculate_times(datetime.now())
+        local_now = city_local_time(utc_now(), city, coords)
+        times = calc.calculate_times(local_now)
         text = f"🕌 **أوقات الصلاة**\n📍 {city}, {coords.get('country', '')}\n📐 {calc.get_method_name()}\n─────\n"
         for p in [
             "imsak",
