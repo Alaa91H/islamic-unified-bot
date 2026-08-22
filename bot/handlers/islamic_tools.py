@@ -1,12 +1,12 @@
 import contextlib
 import json
 import os
-import random as _random
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from bot.decorators import safe_handler
 from bot.islamic_calendar import to_hijri
+from bot.islamic_content import daily_selection, ramadan_status
 from bot.qibla import calculate_qibla
 from bot.time_utils import city_local_time, utc_now
 
@@ -249,16 +249,7 @@ def register(app, deps) -> None:
         _track_usage("ramadan")
         today = utc_now().date()
         h = _to_hijri(today)
-        ramadan_info = ""
-        if h:
-            _, m, y = h
-            if m == 9:
-                ramadan_info = f"✅ **اليوم {h[0]} من رمضان {y} هـ** 🌙\n"
-            else:
-                days = ((9 - m + 12) % 12) * 30
-                ramadan_info = (
-                    f"📅 رمضان {y + (1 if m > 9 else 0)} هـ بعد ~{days} يوم\n"
-                )
+        ramadan_info = ramadan_status(h)
         dua_lines = "\n\n".join(
             f"**{d['name']}:**\n_{d['dua']}_\n📚 {d['source']}" for d in RAMADAN_DUAS
         )
@@ -436,21 +427,13 @@ def register(app, deps) -> None:
         h_str = ""
         if h:
             h_str = f"{h[0]} {ARABIC_MONTHS[h[1]]} {h[2]} هـ"
-        seed = today.toordinal()
-        _rng = _random.Random(seed)
-        surah_num = _rng.randint(1, 114)
-        surah_name = SURAHS.get(surah_num, "")
-        duas_list = list(DUA_CATEGORIES.values())
-        dua_item = _rng.choice(duas_list)
-        dua_name = list(DUA_CATEGORIES.keys())[
-            list(DUA_CATEGORIES.values()).index(dua_item)
-        ]
+        selection = daily_selection(today, SURAHS, DUA_CATEGORIES)
         await message.reply_text(
             f"💎 **جرعتك اليومية**\n"
             f"📅 {today.strftime('%A, %d %B %Y')}\n{h_str}\n\n"
-            f"**📖 سورة اليوم:** {surah_num} - {surah_name}\n"
-            f"استمع: `/quran {surah_num}` | اقرأ: `/quran_text {surah_num}`\n\n"
-            f"**🤲 دعاء اليوم:** {dua_name}\n_{dua_item['dua']}_\n📚 {dua_item['source']}\n\n"
+            f"**📖 سورة اليوم:** {selection.surah_number} - {selection.surah_name}\n"
+            f"استمع: `/quran {selection.surah_number}` | اقرأ: `/quran_text {selection.surah_number}`\n\n"
+            f"**🤲 دعاء اليوم:** {selection.dua_name}\n_{selection.dua['dua']}_\n📚 {selection.dua['source']}\n\n"
             f"_تتغير الجرعة اليومية تلقائياً كل يوم_"
         )
 
