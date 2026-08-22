@@ -6,6 +6,8 @@ from bot.aiogram_runtime import (
     _home_keyboard,
     _name_detail,
     _names_keyboard,
+    _parse_qts_callback,
+    _quran_text_keyboard,
     build_aiogram_app,
     create_main_menu_router,
 )
@@ -15,8 +17,8 @@ def test_aiogram_router_registers_the_pilot_main_menu_handlers():
     router = create_main_menu_router()
 
     assert router.name == "main-menu-pilot"
-    assert len(router.message.handlers) == 3
-    assert len(router.callback_query.handlers) == 3
+    assert len(router.message.handlers) == 4
+    assert len(router.callback_query.handlers) == 5
 
 
 def test_build_aiogram_app_includes_the_pilot_router():
@@ -45,7 +47,19 @@ def test_aiogram_home_keyboard_exposes_only_callbacks_implemented_by_pilot():
         for button in row
     }
 
-    assert callbacks == {"names:page:0", "about"}
+    assert callbacks == {"quran_text:home", "names:page:0", "about"}
+
+
+def test_aiogram_quran_text_keyboard_and_callbacks_are_bounded_to_text_reading():
+    keyboard = _quran_text_keyboard()
+
+    assert keyboard.inline_keyboard[0][0].callback_data == "qts:1:0"
+    assert keyboard.inline_keyboard[-1][0].callback_data == "back_to_start"
+    assert _parse_qts_callback("qts:114:1:tafsir") == (114, 1, True)
+    assert _parse_qts_callback("qts:0:1") is None
+    assert _parse_qts_callback("qts:1:-1") is None
+    assert _parse_qts_callback("qts:1:one") is None
+    assert _parse_qts_callback("qts:1:1:listen") is None
 
 
 def test_settings_rejects_aiogram_runtime_with_voice_streaming(monkeypatch):
