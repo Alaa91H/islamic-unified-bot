@@ -129,6 +129,8 @@ async def main():
     deps = None
     monitor_task = None
     heartbeat_task = None
+    miniapp_api_server = None
+    miniapp_api_task = None
     app_started = False
     try:
         from pyrogram import Client
@@ -162,6 +164,27 @@ async def main():
 
         await deps.adhkar_scheduler.start()
 
+        if settings.miniapp_api_enabled:
+            import uvicorn
+
+            from bot.miniapp_api import create_miniapp_api
+
+            miniapp_api_server = uvicorn.Server(
+                uvicorn.Config(
+                    create_miniapp_api(settings, deps),
+                    host=settings.miniapp_api_host,
+                    port=settings.miniapp_api_port,
+                    log_level=settings.log_level.lower(),
+                    access_log=False,
+                )
+            )
+            miniapp_api_task = asyncio.create_task(miniapp_api_server.serve())
+            logger.info(
+                "✅ API Mini App تعمل على %s:%s",
+                settings.miniapp_api_host,
+                settings.miniapp_api_port,
+            )
+
         monitor_task = asyncio.create_task(_memory_monitor(deps))
         heartbeat_task = asyncio.create_task(_heartbeat())
 
@@ -174,6 +197,11 @@ async def main():
         logger.exception("❌ خطأ حرج أثناء تشغيل البوت")
         raise
     finally:
+        if miniapp_api_server:
+            miniapp_api_server.should_exit = True
+        if miniapp_api_task:
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(miniapp_api_task, timeout=10)
         if monitor_task:
             monitor_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

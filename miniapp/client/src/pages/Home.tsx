@@ -24,6 +24,7 @@ type TelegramWebApp = {
     onClick: (listener: () => void) => void;
   };
   sendData?: (payload: string) => void;
+  initData?: string;
 };
 
 declare global {
@@ -45,6 +46,7 @@ export default function Home() {
   const [notifications, setNotifications] = useState(true);
   const [language, setLanguage] = useState<"ar" | "en">("ar");
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const isArabic = language === "ar";
   const copy = useMemo(
     () =>
@@ -91,14 +93,33 @@ export default function Home() {
     app.expand();
     app.MainButton?.setText(copy.save);
     app.MainButton?.show();
-    app.MainButton?.onClick(() => handleSave());
+    app.MainButton?.onClick(() => void handleSave());
   }, [copy.save]);
 
-  function handleSave() {
+  async function handleSave() {
     const payload = { language, notifications, city: "الرياض", source: "miniapp" };
-    window.Telegram?.WebApp?.sendData?.(JSON.stringify(payload));
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2800);
+    const telegram = window.Telegram?.WebApp;
+    const apiBase = import.meta.env.VITE_MINIAPP_API_URL?.replace(/\/$/, "");
+    setSaveError(false);
+    try {
+      if (apiBase && telegram?.initData) {
+        const response = await fetch(`${apiBase}/api/miniapp/preferences`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Telegram-Init-Data": telegram.initData,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error("Could not save preferences");
+      } else {
+        telegram?.sendData?.(JSON.stringify(payload));
+      }
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2800);
+    } catch {
+      setSaveError(true);
+    }
   }
 
   return (
@@ -181,7 +202,7 @@ export default function Home() {
         {saved ? <Check size={19} /> : <span className="save-arch" />}
         {saved ? copy.saved : copy.save}
       </button>
-      <p className="footnote">{copy.settingsNote}</p>
+      <p className="footnote">{saveError ? (isArabic ? "تعذر الحفظ. حاول مرة أخرى." : "Could not save. Try again.") : copy.settingsNote}</p>
     </main>
   );
 }
