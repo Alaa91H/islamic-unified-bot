@@ -414,6 +414,7 @@ class PrayerTimeVerifier:
         discrepancies = []
         sources_count = 0
         all_sources = {}
+        max_count = 0
 
         if local_times:
             sources_count += 1
