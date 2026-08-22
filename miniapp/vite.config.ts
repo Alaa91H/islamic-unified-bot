@@ -227,6 +227,11 @@ export default defineConfig(({ mode }) => {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
   },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    restoreMocks: true,
+  },
   server: {
     port: 3000,
     strictPort: false, // Will find next available port if 3000 is busy
