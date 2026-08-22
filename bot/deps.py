@@ -62,6 +62,7 @@ async def build_dependencies(settings, app, stream_factory=None):
                 base_delay=settings.initial_reconnect_delay,
                 default_duration_min=settings.default_stream_duration,
                 audio_quality=settings.audio_quality,
+                max_concurrent_streams=settings.max_concurrent_streams,
             )
         else:
             stream_manager = stream_factory(app)

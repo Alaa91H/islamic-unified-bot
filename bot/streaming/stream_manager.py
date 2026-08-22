@@ -1,25 +1,26 @@
-#!/usr/bin/env python3
-"""غلاف آمن حول PyTgCalls للقرآن والأذان.
+"""مدير بث صوتي متسامح مع الأعطال فوق PyTgCalls.
 
-يوفّر:
-- إعادة اتصال محدودة بـ backoff أُسيّ + jitter.
-- مهلة قصوى للبث (auto-stop) عبر asyncio.Task مؤجّل.
-- منع الحلقة اللانهائية: علم loop يتحكم في إعادة البث عند on_stream_end.
-
-استيراد pytgcalls كسول (lazy) داخل __init__ ليفصل المنطق عن native binding،
-مما يسمح باختبار StreamManager على بيئات لا تتوفر فيها مكتبة ntgcalls المُجمّعة.
+يعزل هذا المكوّن الاعتماد الأصلي للبث، ويمنع تجاوز عدد البثات المسموح، ويستخدم
+إعادة محاولة محصورة زمنيًا. لا ينشئ البوت المكالمة الصوتية؛ يجب أن تبدأها إدارة
+المجموعة في Telegram قبل تشغيل الصوت.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import random
-from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from bot.time_utils import utc_now
 
 logger = logging.getLogger(__name__)
+MAX_RETRY_DELAY_SECONDS = 60.0
 
 
 def _import_pytgcalls():
-    """يستورد PyTgCalls و MediaStream/AudioQuality كسليًا. يُسهّل الاستهزاء."""
+    """استيراد PyTgCalls وواجهاته كسليًا ليسهل الاستبدال في الاختبارات."""
     from pytgcalls import PyTgCalls
     from pytgcalls.exceptions import NotInCallError
     from pytgcalls.types import AudioQuality, MediaStream
@@ -27,57 +28,54 @@ def _import_pytgcalls():
     return PyTgCalls, NotInCallError, AudioQuality, MediaStream
 
 
-async def _ensure_group_call(app, chat_id: int) -> bool:
-    """البوت لا يستطيع إنشاء مكالمة صوتية — يجب على المشرف بدؤها يدويًا."""
-    logger.info(
-        "ℹ️ المكالمة غير موجودة في %s — يجب على المشرف إنشاء مكالمة صوتية أولاً", chat_id
-    )
-    return False
-
-
 class StreamManager:
-    """بث صوتي مع reconnect محدود ومهلة قصوى."""
+    """مدير البث مع حد تزامن وإعادة محاولة وإيقاف منظّم."""
 
     def __init__(
         self,
-        app,
+        app: Any,
         max_reconnect: int = 10,
         base_delay: int = 5,
         default_duration_min: int = 120,
         audio_quality: str = "studio",
+        max_concurrent_streams: int = 2,
         pytgcalls_factory=None,
         import_func=None,
-    ):
+    ) -> None:
+        if max_concurrent_streams < 1:
+            raise ValueError("max_concurrent_streams must be at least 1")
+
         self._app = app
         self.max_reconnect = max_reconnect
         self.base_delay = base_delay
         self.default_duration_min = default_duration_min
+        self.max_concurrent_streams = max_concurrent_streams
         self._audio_quality_str = audio_quality
-        self._streams: dict[int, dict] = {}
-        self._timers: dict[int, asyncio.Task] = {}
+        self._streams: dict[int, dict[str, Any]] = {}
+        self._timers: dict[int, asyncio.Task[None]] = {}
+        self._pending_chats: set[int] = set()
+        self._state_lock = asyncio.Lock()
+        self._jitter = random.SystemRandom()
         self._started = False
-        # دالة الاستيراد قابلة للحقن للاختبار (تفصل المنطق عن native binding)
         self._import_func = import_func or _import_pytgcalls
-        # factory قابل للحقن للاختبار؛ الافتراضي يستورد pytgcalls
         if pytgcalls_factory is None:
-            PyTgCalls, _, _, _ = self._import_func()
-            pytgcalls_factory = PyTgCalls
+            pytgcalls_factory, _, _, _ = self._import_func()
         self.pytgcalls = pytgcalls_factory(app)
 
     async def start(self) -> None:
-        """يبدأ خدمة المكالمات ويسجّل معالج نهاية البث."""
+        """بدء عميل المكالمات وتسجيل إعادة البث الاختيارية عند التحديث."""
         if self._started:
             return
         await self.pytgcalls.start()
 
         @self.pytgcalls.on_update()
-        async def _on_update(_client, update):
+        async def _on_update(_client, update) -> None:
             chat_id = getattr(update, "chat_id", None)
             if chat_id is None:
                 return
             info = self._streams.get(chat_id)
             if info and info.get("loop") and info.get("status") == "active":
-                logger.info("🔄 إعادة بث (loop) في %s", chat_id)
+                logger.info("إعادة بث دوري في %s", chat_id)
                 await self.play(
                     chat_id,
                     info["url"],
@@ -87,14 +85,56 @@ class StreamManager:
                 )
 
         self._started = True
-        logger.info("✅ خدمة المكالمات جاهزة")
+        logger.info("خدمة المكالمات جاهزة")
 
     async def stop_all(self) -> None:
-        """يوقف كل المؤقتات وخدمة pytgcalls."""
-        for timer in list(self._timers.values()):
+        """إيقاف كل المكالمات والمؤقتات وإغلاق عميل البث إن كانت واجهته تدعمه."""
+        active_chat_ids = list(self._streams)
+        if active_chat_ids:
+            await asyncio.gather(
+                *(self.stop(chat_id) for chat_id in active_chat_ids),
+                return_exceptions=True,
+            )
+        for timer in self._timers.values():
             timer.cancel()
         self._timers.clear()
         self._streams.clear()
+        self._pending_chats.clear()
+
+        stop_client = getattr(self.pytgcalls, "stop", None)
+        if callable(stop_client) and self._started:
+            try:
+                await stop_client()
+            except Exception:
+                logger.exception("تعذر إيقاف عميل PyTgCalls")
+        self._started = False
+
+    async def _reserve_chat(self, chat_id: int) -> bool:
+        """حجز سعة بث قبل تشغيل المكتبة الخارجية، مع السماح بتحديث البث القائم."""
+        async with self._state_lock:
+            if chat_id in self._streams or chat_id in self._pending_chats:
+                self._pending_chats.add(chat_id)
+                return True
+            if (
+                len(self._streams) + len(self._pending_chats)
+                >= self.max_concurrent_streams
+            ):
+                logger.warning(
+                    "رفض بث جديد في %s: حد البث المتزامن (%s) ممتلئ",
+                    chat_id,
+                    self.max_concurrent_streams,
+                )
+                return False
+            self._pending_chats.add(chat_id)
+            return True
+
+    async def _release_reservation(self, chat_id: int) -> None:
+        async with self._state_lock:
+            self._pending_chats.discard(chat_id)
+
+    def _retry_delay(self, attempt: int) -> float:
+        exponential = self.base_delay * (2**attempt)
+        return min(exponential, MAX_RETRY_DELAY_SECONDS) + self._jitter.uniform(0, 1)
 
     async def play(
         self,
@@ -105,117 +145,131 @@ class StreamManager:
         duration_min: int | None = None,
         attempts: int = 0,
     ) -> bool:
-        """يبدأ بثًا. يُرجع True عند النجاح، False عند استنفاد المحاولات."""
-        _, NotInCallError, AudioQuality, MediaStream = self._import_func()
-        quality_map = {
-            "low": AudioQuality.LOW,
-            "medium": AudioQuality.MEDIUM,
-            "high": AudioQuality.HIGH,
-            "studio": AudioQuality.STUDIO,
-        }
-        audio_params = quality_map.get(self._audio_quality_str, AudioQuality.STUDIO)
-        media = MediaStream(
-            url,
-            audio_parameters=audio_params,
-            ffmpeg_parameters="-af volume=1.5",
-        )
-        try:
-            await self.pytgcalls.play(chat_id, media)
-        except NotInCallError:
-            logger.info("ℹ️ لا توجد مكالمة في %s — يجب إنشاؤها يدويًا", chat_id)
-            return False
-        except Exception as e:
-            err_str = str(e)
-            if "BOT_METHOD_INVALID" in err_str or "NotInCallError" in err_str:
-                logger.info(
-                    "ℹ️ البوت لا يستطيع إنشاء المكالمة — يجب على المشرف بدؤها يدويًا"
-                )
-                return False
-            if attempts < self.max_reconnect:
-                delay = self.base_delay * (2**attempts) + random.uniform(0, 1)
-                logger.exception(
-                    "❌ فشل البث (%d/%d): %s — إعادة بعد %.1fث",
-                    attempts + 1,
-                    self.max_reconnect,
-                    e,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-                return await self.play(
-                    chat_id, url, title, loop, duration_min, attempts + 1
-                )
-            logger.exception("❌ فشل البث نهائيًا بعد %d محاولة", self.max_reconnect)
+        """بدء بث، مع إعادة المحاولة للأخطاء العابرة ضمن سقف زمني واضح."""
+        if not await self._reserve_chat(chat_id):
             return False
 
-        dur = duration_min if duration_min is not None else self.default_duration_min
-        self._streams[chat_id] = {
-            "url": url,
-            "title": title,
-            "started_at": datetime.now(),
-            "status": "active",
-            "loop": loop,
-            "duration_min": dur,
-        }
-        self._schedule_stop(chat_id, dur)
-        logger.info(
-            "✅ بث نشط في %s: %s (loop=%s, dur=%smin)",
-            chat_id,
-            title,
-            loop,
-            dur,
-        )
-        return True
+        try:
+            _, not_in_call_error, audio_quality, media_stream = self._import_func()
+            quality_map = {
+                "low": audio_quality.LOW,
+                "medium": audio_quality.MEDIUM,
+                "high": audio_quality.HIGH,
+                "studio": audio_quality.STUDIO,
+            }
+            media = media_stream(
+                url,
+                audio_parameters=quality_map.get(
+                    self._audio_quality_str, audio_quality.STUDIO
+                ),
+                ffmpeg_parameters="-af volume=1.5",
+            )
+
+            for attempt in range(attempts, self.max_reconnect + 1):
+                try:
+                    await self.pytgcalls.play(chat_id, media)
+                    break
+                except not_in_call_error:
+                    logger.info("لا توجد مكالمة صوتية في %s", chat_id)
+                    return False
+                except Exception as exc:
+                    error_text = str(exc)
+                    if (
+                        "BOT_METHOD_INVALID" in error_text
+                        or "NotInCallError" in error_text
+                    ):
+                        logger.info("يجب بدء مكالمة صوتية يدويًا في %s", chat_id)
+                        return False
+                    if attempt >= self.max_reconnect:
+                        logger.exception(
+                            "فشل البث في %s بعد %s محاولات",
+                            chat_id,
+                            self.max_reconnect + 1,
+                        )
+                        return False
+                    delay = self._retry_delay(attempt)
+                    logger.warning(
+                        "فشل البث في %s (%s/%s): %s؛ إعادة بعد %.1f ث",
+                        chat_id,
+                        attempt + 1,
+                        self.max_reconnect + 1,
+                        exc,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+
+            duration = (
+                duration_min if duration_min is not None else self.default_duration_min
+            )
+            async with self._state_lock:
+                self._streams[chat_id] = {
+                    "url": url,
+                    "title": title,
+                    "started_at": utc_now(),
+                    "status": "active",
+                    "loop": loop,
+                    "duration_min": duration,
+                }
+            self._schedule_stop(chat_id, duration)
+            logger.info(
+                "بث نشط في %s: %s (loop=%s, dur=%smin)", chat_id, title, loop, duration
+            )
+            return True
+        finally:
+            await self._release_reservation(chat_id)
 
     def _schedule_stop(self, chat_id: int, duration_min: int) -> None:
-        old = self._timers.get(chat_id)
-        if old:
-            old.cancel()
+        old_timer = self._timers.get(chat_id)
+        if old_timer:
+            old_timer.cancel()
 
-        async def _auto_stop():
+        async def _auto_stop() -> None:
             try:
                 await asyncio.sleep(duration_min * 60)
-                logger.info("⏹️ انتهت مدة البث في %s", chat_id)
+                logger.info("انتهت مدة البث في %s", chat_id)
                 await self.stop(chat_id)
             except asyncio.CancelledError:
-                pass
+                return
 
         self._timers[chat_id] = asyncio.create_task(_auto_stop())
 
     async def stop(self, chat_id: int) -> bool:
-        """يوقف البث في chat_id. يُرجع True إذا كان هناك بث نشط."""
+        """إيقاف بث واحد وإخلاء حجز السعة حتى عند خطأ المكتبة الخارجية."""
         timer = self._timers.pop(chat_id, None)
         if timer:
             timer.cancel()
         try:
             await self.pytgcalls.leave_call(chat_id)
-        except Exception as e:
-            logger.warning("⚠️ خطأ leave_call في %s: %s", chat_id, e)
+        except Exception:
+            logger.exception("تعذر مغادرة المكالمة الصوتية في %s", chat_id)
+        finally:
+            await self._release_reservation(chat_id)
+
         existed = self._streams.pop(chat_id, None) is not None
         if existed:
-            logger.info("✅ أُوقف البث في %s", chat_id)
+            logger.info("أوقف البث في %s", chat_id)
         return existed
 
-    def active_streams(self) -> dict[int, dict]:
-        """لقطة من البثات النشطة."""
-        return dict(self._streams)
+    def active_streams(self) -> dict[int, dict[str, Any]]:
+        """إرجاع لقطة غير قابلة لتعديل حالة البث الداخلية."""
+        return {chat_id: data.copy() for chat_id, data in self._streams.items()}
 
-    def get_local_files(self, folder_path: str | None = None) -> dict:
-        """مسح ملفات صوتية محلية. دالة متزامنة (تُستدعى عبر executor)."""
-        from pathlib import Path
-
-        if folder_path is None:
-            folder_path = "./music"
-        files = {}
+    def get_local_files(
+        self, folder_path: str | None = None
+    ) -> dict[int, dict[str, Any]]:
+        """مسح ملفات صوتية محلية؛ يجب استدعاؤها من executor عند المسارات الكبيرة."""
+        path = Path(folder_path or "./music")
+        extensions = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
         try:
-            path = Path(folder_path)
-            extensions = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
-            for i, file in enumerate(sorted(path.iterdir()), 1):
-                if file.suffix.lower() in extensions and file.is_file():
-                    files[i] = {
-                        "name": file.name,
-                        "path": str(file.absolute()),
-                        "size": file.stat().st_size,
-                    }
-        except Exception as e:
-            logger.exception("❌ خطأ في قراءة المجلد %s: %s", folder_path, e)
-        return files
+            return {
+                index: {
+                    "name": file.name,
+                    "path": str(file.absolute()),
+                    "size": file.stat().st_size,
+                }
+                for index, file in enumerate(sorted(path.iterdir()), 1)
+                if file.suffix.lower() in extensions and file.is_file()
+            }
+        except OSError:
+            logger.exception("تعذر قراءة مجلد الوسائط %s", folder_path)
+            return {}

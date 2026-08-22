@@ -1,7 +1,6 @@
-from datetime import datetime
-
 from bot.decorators import safe_handler
 from bot.handlers.ui import markup_with_bottom_controls
+from bot.time_utils import city_local_time, utc_now
 
 
 def city_selection_keyboard():
@@ -179,7 +178,8 @@ def register(app, deps) -> None:
             dst=coords.get("dst", False),
             city_name=settings.city,
         )
-        times = calc.calculate_times(datetime.now())
+        local_now = city_local_time(utc_now(), settings.city, coords)
+        times = calc.calculate_times(local_now)
 
         text = f"🕌 **أوقات الصلاة**\n📍 {settings.city}, {coords['country']}\n"
         text += f"📐 {calc.get_method_name()}\n"
@@ -223,20 +223,21 @@ def register(app, deps) -> None:
             await message.reply_text("❌ لم تقم بالإعداد بعد.\nاكتب /azan_setup للبدء")
             return
 
-        now = datetime.now()
         coords = CityCoordinates.get_city_coords(settings.city)
         if not coords:
             return
 
+        local_now = city_local_time(utc_now(), settings.city, coords)
         calc = PrayerTimeCalculator(
             latitude=coords["lat"],
             longitude=coords["lng"],
             timezone=coords["tz"],
             method=settings.method,
             asr_method=settings.asr_method,
+            city_name=settings.city,
         )
-        times = calc.calculate_times(now)
-        now_hhmm = now.strftime("%H:%M")
+        times = calc.calculate_times(local_now)
+        now_hhmm = local_now.strftime("%H:%M")
         prayers = ["fajr", "dhuhr", "asr", "maghrib", "isha"]
 
         for p in prayers:
