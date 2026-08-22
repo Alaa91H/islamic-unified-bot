@@ -1,3 +1,4 @@
+aiogram==3.30.0
 pyrogram==2.0.106
 TgCrypto==1.2.5
 py-tgcalls==2.3.3

@@ -32,10 +32,13 @@ class Dependencies:
             setattr(self, k, v)
 
 
-async def build_dependencies(settings, app, stream_factory=None):
+async def build_dependencies(
+    settings, app, stream_factory=None, message_transport_factory=None
+):
     """يبني كل التبعيات ويُرجعها في حاوية واحدة. app = Pyrogram Client.
 
-    stream_factory قابل للحقن للاختبار (يتجاوز استيراد pytgcalls الافتراضي).
+    stream_factory قابل للحقن للاختبار أو لمسار Bot API بلا بث صوتي.
+    message_transport_factory يسمح بربط notifier بمحول Pyrogram أو aiogram.
     """
     from bot.db.connection import Database
 
@@ -76,9 +79,13 @@ async def build_dependencies(settings, app, stream_factory=None):
     from bot.scheduler.notifier import Notifier
     from bot.scheduler.prayer_scheduler import PrayerScheduler
     from bot.services.quran_radio import QuranRadio
-    from bot.transport import PyrogramMessageTransport
 
-    notifier = Notifier(PyrogramMessageTransport(app), stream_manager)
+    if message_transport_factory is None:
+        from bot.transport import PyrogramMessageTransport
+
+        message_transport_factory = PyrogramMessageTransport
+
+    notifier = Notifier(message_transport_factory(app), stream_manager)
     scheduler = PrayerScheduler(
         user_repo,
         group_repo,

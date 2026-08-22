@@ -131,30 +131,61 @@ async def main():
     heartbeat_task = None
     miniapp_api_server = None
     miniapp_api_task = None
+    telegram_polling_task = None
+    aiogram_dispatcher = None
+    using_aiogram = settings.telegram_runtime == "aiogram"
     app_started = False
     try:
-        from pyrogram import Client
+        if using_aiogram:
+            from bot.aiogram_runtime import build_aiogram_app
+            from bot.streaming.null_stream_manager import NullStreamManager
+            from bot.transport import AiogramMessageTransport
 
-        app = Client(
-            settings.session_name,
-            api_id=settings.api_id,
-            api_hash=settings.api_hash,
-            bot_token=settings.bot_token,
-        )
-        deps = await build_dependencies(settings, app)
+            app, aiogram_dispatcher = build_aiogram_app(settings)
+            deps = await build_dependencies(
+                settings,
+                app,
+                stream_factory=NullStreamManager,
+                message_transport_factory=AiogramMessageTransport,
+            )
+        else:
+            from pyrogram import Client
 
-        from bot.handlers import HandlerRegistry
+            app = Client(
+                settings.session_name,
+                api_id=settings.api_id,
+                api_hash=settings.api_hash,
+                bot_token=settings.bot_token,
+            )
+            deps = await build_dependencies(settings, app)
 
-        HandlerRegistry().register(app, deps)
+            from bot.handlers import HandlerRegistry
+
+            HandlerRegistry().register(app, deps)
 
         old_json = f"{settings.azan_data_dir}/user_settings.json"
         await migrate_from_json(old_json, deps.user_repo)
 
         app_started = True
-        await app.start()
-        logger.info("✅ اتصال Telegram جاهز")
+        if using_aiogram:
+            telegram_polling_task = asyncio.create_task(
+                aiogram_dispatcher.start_polling(
+                    app,
+                    allowed_updates=aiogram_dispatcher.resolve_used_update_types(),
+                ),
+                name="aiogram-polling",
+            )
+            await asyncio.sleep(0)
+            if telegram_polling_task.done():
+                raise RuntimeError("تعذر بدء polling aiogram")
+            logger.warning(
+                "⚠️ يعمل مسار aiogram التجريبي: /start و/help فقط؛ البث الصوتي معطّل"
+            )
+        else:
+            await app.start()
+            logger.info("✅ اتصال Telegram جاهز")
 
-        if hasattr(deps.stream_manager, "start"):
+        if hasattr(deps.stream_manager, "start") and not using_aiogram:
             await deps.stream_manager.start()
         await deps.scheduler.start()
 
@@ -219,10 +250,17 @@ async def main():
             heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
+        if aiogram_dispatcher:
+            await aiogram_dispatcher.stop_polling()
+        if telegram_polling_task:
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(telegram_polling_task, timeout=10)
         logger.info("🛑 إيقاف البوت...")
         if deps:
             await shutdown_dependencies(deps)
-        if app_started:
+        if app_started and using_aiogram:
+            await app.session.close()
+        elif app_started:
             await app.stop()
         logger.info("✅ تم الإيقاف بنجاح")
 

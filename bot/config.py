@@ -55,6 +55,14 @@ def _get_positive_int(name: str, default: int) -> int:
     return value
 
 
+def _get_choice(name: str, default: str, choices: set[str]) -> str:
+    value = _get_str(name, default).lower()
+    if value not in choices:
+        allowed = ", ".join(sorted(choices))
+        raise ValueError(f"❌ {name} يجب أن يكون واحدًا من: {allowed}")
+    return value
+
+
 def _validate_miniapp_api_settings(
     *, enabled: bool, host: str, allowed_origin: str
 ) -> None:
@@ -113,6 +121,7 @@ class Settings:
     data_dir: str = "./data"
     logs_dir: str = "./logs"
     session_name: str = "islamic_unified_bot"
+    telegram_runtime: str = "pyrogram"
 
     # --- مصادر ---
     quran_stream_url: str = "https://server8.mp3quran.net/afs/"
@@ -199,6 +208,15 @@ class Settings:
             allowed_origin=miniapp_allowed_origin,
         )
 
+        stream_enabled = _get_bool("STREAM_ENABLED", False)
+        telegram_runtime = _get_choice(
+            "TELEGRAM_RUNTIME", "pyrogram", {"pyrogram", "aiogram"}
+        )
+        if telegram_runtime == "aiogram" and stream_enabled:
+            raise ValueError(
+                "❌ STREAM_ENABLED غير مدعوم مع TELEGRAM_RUNTIME=aiogram أثناء النقل المرحلي"
+            )
+
         return cls(
             bot_token=_get_required("BOT_TOKEN"),
             api_id=api_id,
@@ -209,6 +227,7 @@ class Settings:
             data_dir=_get_str("DATA_DIR", "./data"),
             logs_dir=_get_str("LOGS_DIR", "./logs"),
             session_name=_get_str("SESSION_NAME", "islamic_unified_bot"),
+            telegram_runtime=telegram_runtime,
             quran_stream_url=_get_str(
                 "QURAN_STREAM_URL", "https://server8.mp3quran.net/afs/"
             ),
@@ -222,7 +241,7 @@ class Settings:
             notifications_enabled=_get_bool("NOTIFICATIONS_ENABLED", True),
             prelude_enabled=_get_bool("PRELUDE_ENABLED", False),
             prelude_time=_get_int("PRELUDE_TIME", 5),
-            stream_enabled=_get_bool("STREAM_ENABLED", False),
+            stream_enabled=stream_enabled,
             default_azan_source=_get_str("DEFAULT_AZAN_SOURCE", "traditional"),
             stream_stop_before=_get_int("STREAM_STOP_BEFORE", 0),
             default_stream_duration=_get_int("DEFAULT_STREAM_DURATION", 120),
