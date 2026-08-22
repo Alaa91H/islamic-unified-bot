@@ -16,6 +16,8 @@ from bot.aiogram_runtime import (
     _parse_adhkar_callback,
     _parse_dua_callback,
     _parse_qts_callback,
+    _qibla_help_text,
+    _qibla_text,
     _quran_info_keyboard,
     _quran_page_keyboard,
     _quran_text_keyboard,
@@ -28,8 +30,8 @@ def test_aiogram_router_registers_the_pilot_main_menu_handlers():
     router = create_main_menu_router()
 
     assert router.name == "main-menu-pilot"
-    assert len(router.message.handlers) == 7
-    assert len(router.callback_query.handlers) == 8
+    assert len(router.message.handlers) == 8
+    assert len(router.callback_query.handlers) == 9
 
 
 def test_build_aiogram_app_includes_the_pilot_router():
@@ -63,6 +65,7 @@ def test_aiogram_home_keyboard_exposes_only_callbacks_implemented_by_pilot():
         "adhkar:home",
         "dua:home",
         "hijri:today",
+        "qibla:help",
         "names:page:0",
         "about",
     }
@@ -145,6 +148,23 @@ def test_aiogram_dua_callbacks_are_bounded_to_local_data():
 def test_aiogram_hijri_text_uses_shared_calendar_and_handles_unsupported_dates():
     assert "هجري: 1 محرم 1 هـ" in _hijri_text(date(622, 7, 16))
     assert _hijri_text(date(622, 7, 15)) == "❌ تعذر حساب التاريخ الهجري"
+
+
+def test_aiogram_qibla_helpers_reject_empty_and_unknown_city_safely():
+    assert "`/qibla [اسم المدينة]`" in _qibla_help_text()
+    assert _qibla_text("") == _qibla_help_text()
+    assert _qibla_text("مدينة غير موجودة قطعًا").startswith("❌ لم أجد مدينة")
+
+
+def test_aiogram_qibla_helper_uses_local_city_data_for_result_and_suggestion():
+    result = _qibla_text("الرياض")
+    suggestion = _qibla_text("الريا")
+
+    assert "**المدينة:** الرياض" in result
+    assert "**الاتجاه:**" in result
+    assert "**المسافة:**" in result
+    assert "هل تقصد:" in suggestion
+    assert "• الرياض" in suggestion
 
 
 def test_settings_rejects_aiogram_runtime_with_voice_streaming(monkeypatch):

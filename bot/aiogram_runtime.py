@@ -25,6 +25,7 @@ def _home_keyboard():
                     text="📅 التاريخ الهجري", callback_data="hijri:today"
                 )
             ],
+            [InlineKeyboardButton(text="🕋 اتجاه القبلة", callback_data="qibla:help")],
             [
                 InlineKeyboardButton(
                     text="🤲 أسماء الله الحسنى", callback_data="names:page:0"
@@ -335,6 +336,43 @@ def _hijri_text(today) -> str:
     )
 
 
+def _qibla_help_text() -> str:
+    """نص مساعدة القبلة لمسار aiogram دون أي callback إدخال حر."""
+
+    return "🕋 **اتجاه القبلة**\n\nاستخدم الأمر: `/qibla [اسم المدينة]`\nمثال: `/qibla الرياض`"
+
+
+def _qibla_text(city: str) -> str:
+    """أعد نتيجة القبلة من مدينة محلية أو رسالة مساعدة/اقتراح محددة."""
+    from bot.prayer.calculator import CityCoordinates
+    from bot.qibla import calculate_qibla
+
+    city = city.strip()
+    if not city:
+        return _qibla_help_text()
+    coordinates = CityCoordinates.get_city_coords(city)
+    if coordinates is None:
+        suggestions = CityCoordinates.search_cities(city)
+        if suggestions:
+            names = "\n".join(f"• {name}" for name in suggestions[:5])
+            return (
+                f"⚠️ لم أجد '{city}' بالتحديد. هل تقصد:\n{names}\n\n"
+                "استخدم `/qibla [الاسم الدقيق]`"
+            )
+        return f"❌ لم أجد مدينة '{city}'"
+    latitude = coordinates.get("lat")
+    longitude = coordinates.get("lng")
+    if latitude is None or longitude is None:
+        return f"❌ لا تتوفر إحداثيات صالحة لمدينة '{city}'"
+    result = calculate_qibla(float(latitude), float(longitude))
+    return (
+        "🕋 **اتجاه القبلة**\n\n"
+        f"📍 **المدينة:** {city}\n"
+        f"🧭 **الاتجاه:** {result.bearing_degrees:.1f}° ({result.compass})\n"
+        f"📏 **المسافة:** {result.distance_km:.0f} كم عن مكة"
+    )
+
+
 def create_main_menu_router():
     """أنشئ Router للأوامر النصية فقط دون اعتماد على Pyrogram أو MTProto."""
     from aiogram import F, Router
@@ -420,6 +458,12 @@ def create_main_menu_router():
     async def hijri_command(message):
         await show_hijri(message)
 
+    @router.message(Command("qibla"))
+    async def qibla_command(message):
+        raw_text = message.text or ""
+        city = raw_text.partition(" ")[2]
+        await message.answer(_qibla_text(city), reply_markup=_home_keyboard())
+
     @router.callback_query(F.data == "about")
     async def about_callback(callback):
         if callback.message:
@@ -444,6 +488,14 @@ def create_main_menu_router():
     async def hijri_callback(callback):
         if callback.message:
             await show_hijri(callback.message, edit=True)
+        await callback.answer()
+
+    @router.callback_query(F.data == "qibla:help")
+    async def qibla_help_callback(callback):
+        if callback.message:
+            await callback.message.edit_text(
+                _qibla_help_text(), reply_markup=_home_keyboard()
+            )
         await callback.answer()
 
     @router.callback_query(F.data.startswith("adhkar:"))
