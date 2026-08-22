@@ -1,6 +1,5 @@
 import contextlib
 import json
-import math
 import os
 import random as _random
 from collections import defaultdict
@@ -8,6 +7,7 @@ from datetime import date, datetime, timedelta
 
 from bot.decorators import safe_handler
 from bot.islamic_calendar import to_hijri
+from bot.qibla import calculate_qibla
 from bot.time_utils import city_local_time, utc_now
 
 _usage_counts: dict = defaultdict(int)
@@ -48,50 +48,9 @@ def _track_usage(cmd: str) -> None:
         pass
 
 
-KAABA_LAT = 21.4225
-KAABA_LON = 39.8262
-
-
 def _to_hijri(d: date):
     """توافق مؤقت مع استيرادات المنطق السابقة داخل معالج Pyrogram."""
     return to_hijri(d)
-
-
-def _qibla_direction(lat: float, lon: float) -> float:
-    lat1, lon1 = math.radians(lat), math.radians(lon)
-    lat2, lon2 = math.radians(KAABA_LAT), math.radians(KAABA_LON)
-    dlon = lon2 - lon1
-    x = math.sin(dlon) * math.cos(lat2)
-    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(
-        dlon
-    )
-    bearing = math.degrees(math.atan2(x, y))
-    return (bearing + 360) % 360
-
-
-def _compass(degrees: float) -> str:
-    directions = [
-        (0, "N"),
-        (22.5, "NNE"),
-        (45, "NE"),
-        (67.5, "ENE"),
-        (90, "E"),
-        (112.5, "ESE"),
-        (135, "SE"),
-        (157.5, "SSE"),
-        (180, "S"),
-        (202.5, "SSW"),
-        (225, "SW"),
-        (247.5, "WSW"),
-        (270, "W"),
-        (292.5, "WNW"),
-        (315, "NW"),
-        (337.5, "NNW"),
-    ]
-    for angle, label in directions:
-        if degrees < angle + 11.25:
-            return label
-    return "N"
 
 
 def register(app, deps) -> None:
@@ -144,25 +103,13 @@ def register(app, deps) -> None:
             return
 
         lat, lon = coords
-        bearing = _qibla_direction(lat, lon)
-        direction = _compass(bearing)
-
-        dlat = math.radians(KAABA_LAT - lat)
-        dlon = math.radians(KAABA_LON - lon)
-        a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(math.radians(lat))
-            * math.cos(math.radians(KAABA_LAT))
-            * math.sin(dlon / 2) ** 2
-        )
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        dist_km = 6371 * c
+        result = calculate_qibla(lat, lon)
 
         text = (
             f"🕋 **اتجاه القبلة**\n\n"
             f"📍 **المدينة:** {query}\n"
-            f"🧭 **الاتجاه:** {bearing:.1f}° ({direction})\n"
-            f"📏 **المسافة:** {dist_km:.0f} كم عن مكة\n\n"
+            f"🧭 **الاتجاه:** {result.bearing_degrees:.1f}° ({result.compass})\n"
+            f"📏 **المسافة:** {result.distance_km:.0f} كم عن مكة\n\n"
         )
         await message.reply_text(text)
 
