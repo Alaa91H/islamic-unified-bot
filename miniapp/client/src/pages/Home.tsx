@@ -128,7 +128,7 @@ export default function Home() {
       <div className="ambient ambient-two" />
       <header className="topbar" aria-label="التنقل الرئيسي">
         <div className="brand-lockup">
-          <img className="brand-mark" src="/assets/mihrab-mark.png" alt="" />
+          <img className="brand-mark" src="/assets/mihrab-mark.webp" alt="" />
           <span>محراب اليوم</span>
         </div>
         <button
@@ -150,7 +150,7 @@ export default function Home() {
       </section>
 
       <section className="hero-card" aria-label={copy.next}>
-        <img className="hero-art" src="/assets/mihrab-hero.png" alt="" />
+        <img className="hero-art" src="/assets/mihrab-hero.webp" alt="" />
         <div className="hero-shade" />
         <div className="hero-content">
           <div className="hero-label"><MoonStar size={15} /> {copy.next}</div>
