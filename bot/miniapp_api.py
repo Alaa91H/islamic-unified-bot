@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlparse
 
+import aiosqlite
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from bot.db.repositories.user_settings import UserSettings
 from bot.miniapp_auth import (
@@ -32,13 +35,25 @@ def create_miniapp_api(settings, deps) -> FastAPI:
         title="Islamic Unified Bot Mini App API", docs_url=None, redoc_url=None
     )
     if settings.miniapp_allowed_origin:
+        origin_host = urlparse(settings.miniapp_allowed_origin).netloc
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=[origin_host])
         app.add_middleware(
             CORSMiddleware,
             allow_origins=[settings.miniapp_allowed_origin],
             allow_credentials=False,
             allow_methods=["GET", "PUT"],
             allow_headers=["X-Telegram-Init-Data", "Content-Type"],
+            max_age=600,
         )
+
+    @app.middleware("http")
+    async def add_security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     async def identity_from_header(
         x_telegram_init_data: str | None = Header(default=None),
@@ -68,7 +83,7 @@ def create_miniapp_api(settings, deps) -> FastAPI:
         try:
             await deps.db.fetchone("SELECT 1")
             delivery = await deps.sent_repo.delivery_metrics()
-        except Exception:
+        except (RuntimeError, aiosqlite.Error):
             log_event(logger, "miniapp_readiness_failed", level=logging.ERROR)
             raise HTTPException(status_code=503, detail="Service unavailable") from None
         return {"status": "ready", "delivery": delivery}

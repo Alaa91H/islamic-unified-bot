@@ -57,6 +57,10 @@ class QuranRadio:
         self._settings = settings
         self._states: dict[int, RadioState] = {}
 
+    def _default_quality(self) -> str:
+        quality = getattr(self._settings, "audio_quality", "high")
+        return quality if quality in AUDIO_QUALITY_OPTIONS else "high"
+
     def get_current_surah(self, state: RadioState) -> int:
         """يُرجع رقم السورة الحالية لحالة راديو معيّنة."""
         if 0 <= state.current_index < len(state.queue):
@@ -88,6 +92,7 @@ class QuranRadio:
             queue=queue,
             current_index=start_idx,
             shuffle=False,
+            audio_quality=self._default_quality(),
         )
         self._states[chat_id] = state
         return await self._play_current(chat_id)
@@ -158,7 +163,12 @@ class QuranRadio:
         dur = estimate_duration(surah_num)
 
         ok = await self._stream.play(
-            chat_id, url, f"{surah_num} - {name}", loop=False, duration_min=dur + 5
+            chat_id,
+            url,
+            f"{surah_num} - {name}",
+            loop=False,
+            duration_min=dur + 5,
+            audio_quality=state.audio_quality,
         )
         if ok:
             state.playing = True

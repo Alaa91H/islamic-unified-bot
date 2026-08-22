@@ -11,7 +11,6 @@ from azan_manager import (
 
 
 class TestUserAzanSettings:
-
     def test_default_prayers_populated(self):
         s = UserAzanSettings(user_id=1, city="مكة المكرمة")
         assert s.enabled_prayers is not None
@@ -48,7 +47,6 @@ class TestUserAzanSettings:
 
 
 class TestAzanScheduler:
-
     def setup_method(self):
         self.tmp = tempfile.mkdtemp()
         self.scheduler = AzanScheduler(data_dir=self.tmp)
@@ -133,7 +131,6 @@ class TestAzanScheduler:
 
 
 class TestAzanStreamer:
-
     def setup_method(self):
         self.streamer = AzanStreamer()
 
@@ -189,7 +186,6 @@ class TestAzanStreamer:
 
 
 class TestAzanNotificationManager:
-
     def setup_method(self):
         self.manager = AzanNotificationManager()
 

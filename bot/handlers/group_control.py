@@ -1,5 +1,6 @@
 from bot.decorators import admin_only, safe_handler
 from bot.handlers.ui import markup_with_bottom_controls
+from bot.time_utils import utc_now
 
 
 def _control_panel_keyboard(chat_id: int):
@@ -226,9 +227,9 @@ def register(app, deps) -> None:
                     title = info.get("title", "")
                     lines.append(f"🎵 **{title}**")
                     if "started_at" in info:
-                        elapsed = (
-                            __import__("datetime").datetime.now() - info["started_at"]
-                        ).seconds // 60
+                        elapsed = int(
+                            (utc_now() - info["started_at"]).total_seconds() // 60
+                        )
                         lines.append(f"⏱ المدة: {elapsed} دقيقة")
                 if radio_state:
                     from bot.data.surahs import SURAHS

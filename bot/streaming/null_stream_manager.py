@@ -29,6 +29,7 @@ class NullStreamManager:
         loop: bool = False,
         duration_min: int | None = None,
         attempts: int = 0,
+        audio_quality: str | None = None,
     ) -> bool:
         logger.info("ℹ️ البث الصوتي غير متاح (py-tgcalls غير مثبت)")
         return False

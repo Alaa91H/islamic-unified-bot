@@ -3,9 +3,10 @@ import hmac
 import json
 import time
 from types import SimpleNamespace
-from urllib.parse import urlencode
 from unittest.mock import AsyncMock
+from urllib.parse import urlencode
 
+import aiosqlite
 import pytest
 from fastapi.testclient import TestClient
 
@@ -79,3 +80,61 @@ def test_preferences_api_requires_init_data_and_saves_verified_user():
     assert response.status_code == 200
     assert response.json() == {"saved": True}
     assert repo.upsert.await_args.args[0].user_id == 12345
+
+
+def test_preferences_api_applies_cors_security_headers_and_no_store():
+    repo = SimpleNamespace(get=AsyncMock(return_value=None), upsert=AsyncMock())
+    db = SimpleNamespace(fetchone=AsyncMock(return_value=(1,)))
+    sent_repo = SimpleNamespace(delivery_metrics=AsyncMock(return_value={}))
+    settings = SimpleNamespace(
+        bot_token="test-token",
+        miniapp_init_data_max_age=3600,
+        miniapp_allowed_origin="https://miniapp.example.com",
+        default_calculation_method="mwl",
+        default_asr_method="standard",
+        default_timezone=3,
+    )
+    client = TestClient(
+        create_miniapp_api(
+            settings, SimpleNamespace(user_repo=repo, db=db, sent_repo=sent_repo)
+        )
+    )
+
+    response = client.options(
+        "/api/miniapp/preferences",
+        headers={
+            "Origin": "https://miniapp.example.com",
+            "Access-Control-Request-Method": "PUT",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.headers["access-control-allow-origin"] == "https://miniapp.example.com"
+    )
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_readyz_hides_operational_database_errors():
+    repo = SimpleNamespace(get=AsyncMock(return_value=None), upsert=AsyncMock())
+    db = SimpleNamespace(fetchone=AsyncMock(side_effect=aiosqlite.OperationalError()))
+    sent_repo = SimpleNamespace(delivery_metrics=AsyncMock(return_value={}))
+    settings = SimpleNamespace(
+        bot_token="test-token",
+        miniapp_init_data_max_age=3600,
+        miniapp_allowed_origin="",
+        default_calculation_method="mwl",
+        default_asr_method="standard",
+        default_timezone=3,
+    )
+    client = TestClient(
+        create_miniapp_api(
+            settings, SimpleNamespace(user_repo=repo, db=db, sent_repo=sent_repo)
+        )
+    )
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service unavailable"}

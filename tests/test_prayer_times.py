@@ -4,7 +4,6 @@ from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
 
 
 class TestPrayerTimeCalculator:
-
     def setup_method(self):
         self.calc_makkah = PrayerTimeCalculator(
             latitude=21.3891, longitude=39.8579, timezone=3, method="makkah"
@@ -23,9 +22,9 @@ class TestPrayerTimeCalculator:
     def test_calculate_times_contains_all_prayers(self):
         result = self.calc_makkah.calculate_times(self.test_date)
         required = {"fajr", "dhuhr", "asr", "maghrib", "isha"}
-        assert required.issubset(
-            result.keys()
-        ), f"Missing prayers: {required - result.keys()}"
+        assert required.issubset(result.keys()), (
+            f"Missing prayers: {required - result.keys()}"
+        )
 
     def test_calculate_times_format_hh_mm(self):
         result = self.calc_makkah.calculate_times(self.test_date)
@@ -50,18 +49,18 @@ class TestPrayerTimeCalculator:
         maghrib = to_minutes(result["maghrib"])
         isha = to_minutes(result["isha"])
 
-        assert (
-            fajr < dhuhr
-        ), f"Fajr {result['fajr']} must be before Dhuhr {result['dhuhr']}"
-        assert (
-            dhuhr < asr
-        ), f"Dhuhr {result['dhuhr']} must be before Asr {result['asr']}"
-        assert (
-            asr < maghrib
-        ), f"Asr {result['asr']} must be before Maghrib {result['maghrib']}"
-        assert (
-            maghrib < isha
-        ), f"Maghrib {result['maghrib']} must be before Isha {result['isha']}"
+        assert fajr < dhuhr, (
+            f"Fajr {result['fajr']} must be before Dhuhr {result['dhuhr']}"
+        )
+        assert dhuhr < asr, (
+            f"Dhuhr {result['dhuhr']} must be before Asr {result['asr']}"
+        )
+        assert asr < maghrib, (
+            f"Asr {result['asr']} must be before Maghrib {result['maghrib']}"
+        )
+        assert maghrib < isha, (
+            f"Maghrib {result['maghrib']} must be before Isha {result['isha']}"
+        )
 
     def test_different_methods_give_different_results(self):
         result_makkah = self.calc_makkah.calculate_times(self.test_date)
@@ -100,7 +99,6 @@ class TestPrayerTimeCalculator:
 
 
 class TestCityCoordinates:
-
     def test_get_city_coords_makkah(self):
         coords = CityCoordinates.get_city_coords("مكة المكرمة")
         assert coords is not None

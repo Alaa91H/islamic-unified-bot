@@ -82,6 +82,7 @@ class StreamManager:
                     info["title"],
                     loop=True,
                     duration_min=info.get("duration_min"),
+                    audio_quality=info.get("audio_quality"),
                 )
 
         self._started = True
@@ -144,23 +145,25 @@ class StreamManager:
         loop: bool = False,
         duration_min: int | None = None,
         attempts: int = 0,
+        audio_quality: str | None = None,
     ) -> bool:
         """بدء بث، مع إعادة المحاولة للأخطاء العابرة ضمن سقف زمني واضح."""
         if not await self._reserve_chat(chat_id):
             return False
 
         try:
-            _, not_in_call_error, audio_quality, media_stream = self._import_func()
+            _, not_in_call_error, audio_quality_type, media_stream = self._import_func()
             quality_map = {
-                "low": audio_quality.LOW,
-                "medium": audio_quality.MEDIUM,
-                "high": audio_quality.HIGH,
-                "studio": audio_quality.STUDIO,
+                "low": audio_quality_type.LOW,
+                "medium": audio_quality_type.MEDIUM,
+                "high": audio_quality_type.HIGH,
+                "studio": audio_quality_type.STUDIO,
             }
+            selected_quality = audio_quality or self._audio_quality_str
             media = media_stream(
                 url,
                 audio_parameters=quality_map.get(
-                    self._audio_quality_str, audio_quality.STUDIO
+                    selected_quality, audio_quality_type.STUDIO
                 ),
                 ffmpeg_parameters="-af volume=1.5",
             )
@@ -209,6 +212,7 @@ class StreamManager:
                     "status": "active",
                     "loop": loop,
                     "duration_min": duration,
+                    "audio_quality": selected_quality,
                 }
             self._schedule_stop(chat_id, duration)
             logger.info(

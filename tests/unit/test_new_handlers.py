@@ -708,16 +708,16 @@ class TestHadithHandlerExecution:
             cq.message.edit_text = AsyncMock()
             cq.answer = AsyncMock()
 
-            with patch(
-                "bot.data.hadith_data.get_hadith",
-                new=AsyncMock(return_value=hadith_data),
+            with (
+                patch(
+                    "bot.data.hadith_data.get_hadith",
+                    new=AsyncMock(return_value=hadith_data),
+                ),
+                patch("bot.data.hadith_data.format_hadith", return_value="متن الحديث"),
             ):
-                with patch(
-                    "bot.data.hadith_data.format_hadith", return_value="متن الحديث"
-                ):
-                    await captured["hadith_callback"](client, cq)
-                    cq.message.edit_text.assert_called_once()
-                    cq.answer.assert_called_once()
+                await captured["hadith_callback"](client, cq)
+                cq.message.edit_text.assert_called_once()
+                cq.answer.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_hadith_callback_get_not_found(self):

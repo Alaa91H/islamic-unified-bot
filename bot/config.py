@@ -7,6 +7,7 @@
 
 import os
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 # قيم "قالب" تعتبر غير مضبوطة وترفض عند التحقق
 _PLACEHOLDER_VALUES = {
@@ -38,6 +39,46 @@ def _get_int(name: str, default: int) -> int:
         raise ValueError(
             f"❌ {name} يجب أن يكون رقمًا صحيحًا، حصلنا على: {raw!r}"
         ) from exc
+
+
+def _get_port(name: str, default: int) -> int:
+    value = _get_int(name, default)
+    if not 1 <= value <= 65535:
+        raise ValueError(f"❌ {name} يجب أن يكون بين 1 و65535")
+    return value
+
+
+def _get_positive_int(name: str, default: int) -> int:
+    value = _get_int(name, default)
+    if value <= 0:
+        raise ValueError(f"❌ {name} يجب أن يكون رقمًا صحيحًا موجبًا")
+    return value
+
+
+def _validate_miniapp_api_settings(
+    *, enabled: bool, host: str, allowed_origin: str
+) -> None:
+    """تمنع تفعيل API عامة بلا HTTPS أو بربط شبكة غير مقصود."""
+    if not enabled:
+        return
+    if host not in {"127.0.0.1", "::1", "localhost"}:
+        raise ValueError(
+            "❌ MINIAPP_API_HOST يجب أن يبقى localhost أو عنوان loopback خلف reverse proxy"
+        )
+    parsed = urlparse(allowed_origin)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.path
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(
+            "❌ MINIAPP_ALLOWED_ORIGIN يجب أن يكون HTTPS origin دقيقًا بلا مسار، مثل https://miniapp.example.com"
+        )
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -127,6 +168,7 @@ class Settings:
     miniapp_api_port: int = 8080
     miniapp_init_data_max_age: int = 3600
     miniapp_allowed_origin: str = ""
+    miniapp_api_concurrency_limit: int = 50
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -147,6 +189,15 @@ class Settings:
             _fail("API_ID")
         if owner_id == 0:
             _fail("OWNER_ID")
+
+        miniapp_api_enabled = _get_bool("MINIAPP_API_ENABLED", False)
+        miniapp_api_host = _get_str("MINIAPP_API_HOST", "127.0.0.1")
+        miniapp_allowed_origin = _get_str("MINIAPP_ALLOWED_ORIGIN", "")
+        _validate_miniapp_api_settings(
+            enabled=miniapp_api_enabled,
+            host=miniapp_api_host,
+            allowed_origin=miniapp_allowed_origin,
+        )
 
         return cls(
             bot_token=_get_required("BOT_TOKEN"),
@@ -190,11 +241,16 @@ class Settings:
             cache_ttl=_get_int("CACHE_TTL", 3600),
             max_concurrent_streams=_get_int("MAX_CONCURRENT_STREAMS", 2),
             lightweight_mode=_get_bool("LIGHTWEIGHT_MODE", True),
-            miniapp_api_enabled=_get_bool("MINIAPP_API_ENABLED", False),
-            miniapp_api_host=_get_str("MINIAPP_API_HOST", "127.0.0.1"),
-            miniapp_api_port=_get_int("MINIAPP_API_PORT", 8080),
-            miniapp_init_data_max_age=_get_int("MINIAPP_INIT_DATA_MAX_AGE", 3600),
-            miniapp_allowed_origin=_get_str("MINIAPP_ALLOWED_ORIGIN", ""),
+            miniapp_api_enabled=miniapp_api_enabled,
+            miniapp_api_host=miniapp_api_host,
+            miniapp_api_port=_get_port("MINIAPP_API_PORT", 8080),
+            miniapp_init_data_max_age=_get_positive_int(
+                "MINIAPP_INIT_DATA_MAX_AGE", 3600
+            ),
+            miniapp_allowed_origin=miniapp_allowed_origin,
+            miniapp_api_concurrency_limit=_get_positive_int(
+                "MINIAPP_API_CONCURRENCY_LIMIT", 50
+            ),
         )
 
     def is_owner(self, user_id: int) -> bool:

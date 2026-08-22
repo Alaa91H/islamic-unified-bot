@@ -5,7 +5,6 @@ from azan_config import AZAN_SOURCES, PRELUDE_SOURCES
 
 
 class TestAzanConfig:
-
     REQUIRED_PRAYERS = ["fajr", "dhuhr", "asr", "maghrib", "isha"]
 
     def test_azan_sources_not_empty(self):
@@ -26,9 +25,9 @@ class TestAzanConfig:
         for key, source in AZAN_SOURCES.items():
             for prayer in self.REQUIRED_PRAYERS:
                 url = source[prayer]
-                assert isinstance(
-                    url, str
-                ), f"URL for {prayer} in '{key}' must be string, got {type(url)}"
+                assert isinstance(url, str), (
+                    f"URL for {prayer} in '{key}' must be string, got {type(url)}"
+                )
                 assert len(url) > 0, f"Empty URL for {prayer} in '{key}'"
 
     def test_prelude_sources_not_empty(self):
@@ -42,9 +41,9 @@ class TestAzanConfig:
 
     def test_prelude_duration_positive(self):
         for key, source in PRELUDE_SOURCES.items():
-            assert isinstance(
-                source["duration"], (int, float)
-            ), f"Duration must be numeric in '{key}'"
+            assert isinstance(source["duration"], (int, float)), (
+                f"Duration must be numeric in '{key}'"
+            )
             assert source["duration"] > 0, f"Duration must be positive in '{key}'"
 
     def test_no_duplicate_source_keys(self):
@@ -53,15 +52,14 @@ class TestAzanConfig:
 
 
 class TestAdvancedAdhkarLibrary:
-
     def test_advanced_adhkar_not_empty(self):
         assert len(ADVANCED_ADHKAR) > 0
 
     def test_all_categories_have_list(self):
         for category, items in ADVANCED_ADHKAR.items():
-            assert isinstance(
-                items, list
-            ), f"Category '{category}' must be a list, got {type(items)}"
+            assert isinstance(items, list), (
+                f"Category '{category}' must be a list, got {type(items)}"
+            )
 
     def test_all_categories_non_empty(self):
         for category, items in ADVANCED_ADHKAR.items():
@@ -89,27 +87,26 @@ class TestAdvancedAdhkarLibrary:
     def test_titles_are_unique_within_category(self):
         for category, items in ADVANCED_ADHKAR.items():
             titles = [item["title"] for item in items]
-            assert len(titles) == len(
-                set(titles)
-            ), f"Duplicate titles in category '{category}'"
+            assert len(titles) == len(set(titles)), (
+                f"Duplicate titles in category '{category}'"
+            )
 
     def test_no_empty_text_fields(self):
         for category, items in ADVANCED_ADHKAR.items():
             for i, item in enumerate(items):
                 text = item.get("text", "")
-                assert (
-                    text.strip() != ""
-                ), f"Empty text in {category}[{i}]: {item.get('title')}"
+                assert text.strip() != "", (
+                    f"Empty text in {category}[{i}]: {item.get('title')}"
+                )
 
 
 class TestIslamicDataIntegrity:
-
     def test_main_module_imports_cleanly(self):
         try:
             # Just test that the file is parseable Python
             import ast
 
-            with open("main.py", "r", encoding="utf-8") as f:
+            with open("main.py", encoding="utf-8") as f:
                 source = f.read()
             tree = ast.parse(source)
             assert tree is not None
@@ -124,19 +121,19 @@ class TestIslamicDataIntegrity:
         errors = []
         for filepath in py_files:
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     ast.parse(f.read())
             except SyntaxError as e:
                 errors.append(f"{filepath}: {e}")
         assert not errors, "Syntax errors found:\n" + "\n".join(errors)
 
     def test_requirements_txt_exists_and_non_empty(self):
-        with open("requirements.txt", "r", encoding="utf-8") as f:
+        with open("requirements.txt", encoding="utf-8") as f:
             content = f.read().strip()
         assert len(content) > 0, "requirements.txt is empty"
 
     def test_requirements_has_core_packages(self):
-        with open("requirements.txt", "r", encoding="utf-8") as f:
+        with open("requirements.txt", encoding="utf-8") as f:
             content = f.read().lower()
         for pkg in ("pyrogram", "python-dotenv", "aiohttp"):
             assert pkg in content, f"Missing required package: {pkg}"
@@ -147,13 +144,13 @@ class TestIslamicDataIntegrity:
         assert os.path.exists(".env.example"), ".env.example file is missing"
 
     def test_env_example_has_required_keys(self):
-        with open(".env.example", "r", encoding="utf-8") as f:
+        with open(".env.example", encoding="utf-8") as f:
             content = f.read()
         for key in ("BOT_TOKEN", "API_ID", "API_HASH", "OWNER_ID"):
             assert key in content, f"Missing key '{key}' in .env.example"
 
     def test_gitignore_protects_env(self):
-        with open(".gitignore", "r", encoding="utf-8") as f:
+        with open(".gitignore", encoding="utf-8") as f:
             content = f.read()
         assert ".env" in content, ".gitignore must include .env"
         assert "*.session" in content, ".gitignore must include *.session"
