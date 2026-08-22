@@ -19,6 +19,7 @@ def _home_keyboard():
                 ),
             ],
             [InlineKeyboardButton(text="📿 الأذكار", callback_data="adhkar:home")],
+            [InlineKeyboardButton(text="🤲 الأدعية", callback_data="dua:home")],
             [
                 InlineKeyboardButton(
                     text="🤲 أسماء الله الحسنى", callback_data="names:page:0"
@@ -272,6 +273,46 @@ def _parse_adhkar_callback(data: str) -> tuple[str, str, int | None] | None:
     return None
 
 
+def _dua_categories_keyboard():
+    """لوحة الأدعية الثابتة لمسار aiogram النصي فقط."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from bot.data.duas import DUA_CATEGORY_KEYS
+
+    rows = [
+        [InlineKeyboardButton(text=category, callback_data=f"dua:show:{category}")]
+        for category in DUA_CATEGORY_KEYS
+    ]
+    rows.append(
+        [InlineKeyboardButton(text="🔙 الرئيسية", callback_data="back_to_start")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _parse_dua_callback(data: str) -> str | None:
+    """تحقق من callback الأدعية قبل قراءة بياناته المحلية."""
+    from bot.data.duas import DUA_CATEGORIES
+
+    if data == "dua:home":
+        return ""
+    parts = data.split(":", 2)
+    if len(parts) == 3 and parts[:2] == ["dua", "show"]:
+        category = parts[2]
+        if category in DUA_CATEGORIES:
+            return category
+    return None
+
+
+def _dua_detail(category: str) -> str | None:
+    """أعد نص الدعاء الموثق أو None لفئة غير صالحة."""
+    from bot.data.duas import DUA_CATEGORIES
+
+    info = DUA_CATEGORIES.get(category)
+    if info is None:
+        return None
+    return f"🤲 **{category}**\n\n_{info['dua']}_\n\n📚 {info['source']}"
+
+
 def create_main_menu_router():
     """أنشئ Router للأوامر النصية فقط دون اعتماد على Pyrogram أو MTProto."""
     from aiogram import F, Router
@@ -299,6 +340,13 @@ def create_main_menu_router():
             await message.edit_text(text, reply_markup=_adhkar_categories_keyboard())
         else:
             await message.answer(text, reply_markup=_adhkar_categories_keyboard())
+
+    async def show_dua_landing(message, *, edit: bool = False):
+        text = "🤲 **الأدعية الجامعة**\n\nاختر تصنيفاً:"
+        if edit:
+            await message.edit_text(text, reply_markup=_dua_categories_keyboard())
+        else:
+            await message.answer(text, reply_markup=_dua_categories_keyboard())
 
     @router.message(CommandStart())
     async def start_command(message):
@@ -332,6 +380,10 @@ def create_main_menu_router():
     @router.message(Command("adhkar"))
     async def adhkar_command(message):
         await show_adhkar_landing(message)
+
+    @router.message(Command("dua"))
+    async def dua_command(message):
+        await show_dua_landing(message)
 
     @router.callback_query(F.data == "about")
     async def about_callback(callback):
@@ -381,6 +433,35 @@ def create_main_menu_router():
             await callback.answer("ذكر غير صالح", show_alert=True)
             return
         text, keyboard = detail
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+
+    @router.callback_query(F.data.startswith("dua:"))
+    async def dua_callback(callback):
+        category = _parse_dua_callback(callback.data or "")
+        if category is None or callback.message is None:
+            await callback.answer("طلب غير صالح", show_alert=True)
+            return
+        if not category:
+            await show_dua_landing(callback.message, edit=True)
+            await callback.answer()
+            return
+        text = _dua_detail(category)
+        if text is None:
+            await callback.answer("دعاء غير صالح", show_alert=True)
+            return
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 الأدعية", callback_data="dua:home")],
+                [
+                    InlineKeyboardButton(
+                        text="⌂ الرئيسية", callback_data="back_to_start"
+                    )
+                ],
+            ]
+        )
         await callback.message.edit_text(text, reply_markup=keyboard)
         await callback.answer()
 

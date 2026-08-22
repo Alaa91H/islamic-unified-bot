@@ -6,10 +6,13 @@ from bot.aiogram_runtime import (
     _adhkar_categories_keyboard,
     _adhkar_item_detail,
     _adhkar_items_keyboard,
+    _dua_categories_keyboard,
+    _dua_detail,
     _home_keyboard,
     _name_detail,
     _names_keyboard,
     _parse_adhkar_callback,
+    _parse_dua_callback,
     _parse_qts_callback,
     _quran_info_keyboard,
     _quran_page_keyboard,
@@ -23,8 +26,8 @@ def test_aiogram_router_registers_the_pilot_main_menu_handlers():
     router = create_main_menu_router()
 
     assert router.name == "main-menu-pilot"
-    assert len(router.message.handlers) == 5
-    assert len(router.callback_query.handlers) == 6
+    assert len(router.message.handlers) == 6
+    assert len(router.callback_query.handlers) == 7
 
 
 def test_build_aiogram_app_includes_the_pilot_router():
@@ -53,7 +56,13 @@ def test_aiogram_home_keyboard_exposes_only_callbacks_implemented_by_pilot():
         for button in row
     }
 
-    assert callbacks == {"quran_text:home", "adhkar:home", "names:page:0", "about"}
+    assert callbacks == {
+        "quran_text:home",
+        "adhkar:home",
+        "dua:home",
+        "names:page:0",
+        "about",
+    }
 
 
 def test_aiogram_quran_text_keyboard_and_callbacks_are_bounded_to_text_reading():
@@ -115,6 +124,19 @@ def test_aiogram_adhkar_callbacks_are_bounded_to_local_data():
     detail = _adhkar_item_detail(category, 0)
     assert detail is not None
     assert "**النص:**" in detail[0]
+
+
+def test_aiogram_dua_callbacks_are_bounded_to_local_data():
+    keyboard = _dua_categories_keyboard()
+    callback = keyboard.inline_keyboard[0][0].callback_data
+    category = _parse_dua_callback(callback)
+
+    assert category
+    assert _parse_dua_callback("dua:home") == ""
+    assert _parse_dua_callback("dua:show:unknown") is None
+    assert _parse_dua_callback("dua:show") is None
+    assert _dua_detail(category) is not None
+    assert _dua_detail("unknown") is None
 
 
 def test_settings_rejects_aiogram_runtime_with_voice_streaming(monkeypatch):
