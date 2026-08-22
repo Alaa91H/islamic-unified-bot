@@ -21,6 +21,7 @@ from bot.aiogram_runtime import (
     _quran_info_keyboard,
     _quran_page_keyboard,
     _quran_text_keyboard,
+    _ramadan_text,
     build_aiogram_app,
     create_main_menu_router,
 )
@@ -30,8 +31,8 @@ def test_aiogram_router_registers_the_pilot_main_menu_handlers():
     router = create_main_menu_router()
 
     assert router.name == "main-menu-pilot"
-    assert len(router.message.handlers) == 8
-    assert len(router.callback_query.handlers) == 9
+    assert len(router.message.handlers) == 9
+    assert len(router.callback_query.handlers) == 10
 
 
 def test_build_aiogram_app_includes_the_pilot_router():
@@ -66,6 +67,7 @@ def test_aiogram_home_keyboard_exposes_only_callbacks_implemented_by_pilot():
         "dua:home",
         "hijri:today",
         "qibla:help",
+        "ramadan:today",
         "names:page:0",
         "about",
     }
@@ -165,6 +167,11 @@ def test_aiogram_qibla_helper_uses_local_city_data_for_result_and_suggestion():
     assert "**المسافة:**" in result
     assert "هل تقصد:" in suggestion
     assert "• الرياض" in suggestion
+
+
+def test_aiogram_ramadan_text_uses_local_data_with_or_without_hijri_date():
+    assert "🌙 **رمضان مبارك**" in _ramadan_text(date(622, 7, 16))
+    assert "**أدعية رمضانية:**" in _ramadan_text(date(622, 7, 15))
 
 
 def test_settings_rejects_aiogram_runtime_with_voice_streaming(monkeypatch):

@@ -26,6 +26,7 @@ def _home_keyboard():
                 )
             ],
             [InlineKeyboardButton(text="🕋 اتجاه القبلة", callback_data="qibla:help")],
+            [InlineKeyboardButton(text="🌙 رمضان", callback_data="ramadan:today")],
             [
                 InlineKeyboardButton(
                     text="🤲 أسماء الله الحسنى", callback_data="names:page:0"
@@ -373,6 +374,24 @@ def _qibla_text(city: str) -> str:
     )
 
 
+def _ramadan_text(today) -> str:
+    """أنشئ محتوى رمضان المحلي لمسار aiogram من دون استدعاء خارجي."""
+    from bot.data.zakat import RAMADAN_DUAS
+    from bot.islamic_calendar import to_hijri
+    from bot.islamic_content import ramadan_status
+
+    ramadan_info = ramadan_status(to_hijri(today))
+    dua_lines = "\n\n".join(
+        f"**{dua['name']}:**\n_{dua['dua']}_\n📚 {dua['source']}"
+        for dua in RAMADAN_DUAS
+    )
+    return (
+        f"🌙 **رمضان مبارك**\n\n{ramadan_info}"
+        "**مواقيت:**\n• السحور: قبل الفجر بـ 10-20 د\n• الإمساك: أذان الفجر\n"
+        f"• الإفطار: أذان المغرب\n\n**أدعية رمضانية:**\n\n{dua_lines}"
+    )
+
+
 def create_main_menu_router():
     """أنشئ Router للأوامر النصية فقط دون اعتماد على Pyrogram أو MTProto."""
     from aiogram import F, Router
@@ -412,6 +431,15 @@ def create_main_menu_router():
         from bot.time_utils import utc_now
 
         text = _hijri_text(utc_now().date())
+        if edit:
+            await message.edit_text(text, reply_markup=_home_keyboard())
+        else:
+            await message.answer(text, reply_markup=_home_keyboard())
+
+    async def show_ramadan(message, *, edit: bool = False):
+        from bot.time_utils import utc_now
+
+        text = _ramadan_text(utc_now().date())
         if edit:
             await message.edit_text(text, reply_markup=_home_keyboard())
         else:
@@ -464,6 +492,10 @@ def create_main_menu_router():
         city = raw_text.partition(" ")[2]
         await message.answer(_qibla_text(city), reply_markup=_home_keyboard())
 
+    @router.message(Command("ramadan"))
+    async def ramadan_command(message):
+        await show_ramadan(message)
+
     @router.callback_query(F.data == "about")
     async def about_callback(callback):
         if callback.message:
@@ -496,6 +528,12 @@ def create_main_menu_router():
             await callback.message.edit_text(
                 _qibla_help_text(), reply_markup=_home_keyboard()
             )
+        await callback.answer()
+
+    @router.callback_query(F.data == "ramadan:today")
+    async def ramadan_callback(callback):
+        if callback.message:
+            await show_ramadan(callback.message, edit=True)
         await callback.answer()
 
     @router.callback_query(F.data.startswith("adhkar:"))
