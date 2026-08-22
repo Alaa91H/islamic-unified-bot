@@ -84,6 +84,7 @@ async def test_qibla_help_callback_edits_message_then_answers_callback():
         ("qts:1:0", "**سورة الفاتحة**"),
         ("adhkar:home", "**الأذكار الإسلامية الشاملة**"),
         ("dua:home", "**الأدعية الجامعة**"),
+        ("ramadan:today", "🌙 **رمضان مبارك**"),
     ],
 )
 async def test_reading_callbacks_dispatch_edit_and_answer(callback_data, expected_text):
