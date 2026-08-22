@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """مصادر الأذان والمقدمات والقرّاء (منقولة من azan_config)."""
 
 _ALL_SURAH_NUMBERS = list(range(1, 115))

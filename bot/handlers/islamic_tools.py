@@ -1,3 +1,4 @@
+import contextlib
 import json
 import math
 import os
@@ -352,10 +353,8 @@ def register(app, deps) -> None:
         if args[0] == "list":
             page = 0
             if len(args) > 1:
-                try:
+                with contextlib.suppress(ValueError):
                     page = max(0, int(args[1]) - 1)
-                except ValueError:
-                    pass
             items_per_page = 30
             items = list(SURAHS.items())
             total_pages = (len(items) + items_per_page - 1) // items_per_page
@@ -655,7 +654,7 @@ def register(app, deps) -> None:
             user_id = message.from_user.id
             settings = await user_repo.get(user_id)
             if settings:
-                setattr(settings, "language", lang)
+                settings.language = lang
                 await user_repo.upsert(settings)
                 msg += " (تم الحفظ)"
         await message.reply_text(msg)

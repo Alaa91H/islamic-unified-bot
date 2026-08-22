@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """إرسال التنبيهات: نص للمستخدم (خاص) + بث أذان للمجموعة (voice chat).
 
 المسؤولية الوحيدة: ترجمة "حان وقت صلاة" إلى إجراء فعلي (رسالة/بث).
@@ -7,7 +6,6 @@
 """
 
 import logging
-from typing import Optional
 
 from bot.data.sources import AZAN_SOURCES
 
@@ -55,7 +53,7 @@ class Notifier:
             logger.info("📩 تنبيه أُرسل للمستخدم %s (%s)", user_id, prayer)
             return True
         except Exception as e:
-            logger.error("❌ فشل إرسال التنبيه لـ %s: %s", user_id, e)
+            logger.exception("❌ فشل إرسال التنبيه لـ %s: %s", user_id, e)
             return False
 
     async def broadcast_group_azan(
@@ -81,7 +79,7 @@ class Notifier:
                 )
                 return True
             except Exception as e:
-                logger.error("❌ فشل الإرسال النصي في %s: %s", chat_id, e)
+                logger.exception("❌ فشل الإرسال النصي في %s: %s", chat_id, e)
                 return False
         try:
             ok = await self._stream.play(
@@ -94,10 +92,10 @@ class Notifier:
                 )
             return ok
         except Exception as e:
-            logger.error("❌ فشل بث الأذان في %s: %s", chat_id, e)
+            logger.exception("❌ فشل بث الأذان في %s: %s", chat_id, e)
             return False
 
     @staticmethod
-    def _get_azan_url(prayer: str, source: str) -> Optional[str]:
+    def _get_azan_url(prayer: str, source: str) -> str | None:
         """يُرجع رابط الأذان لمصدر/صلاة معيّنين، أو None."""
         return AZAN_SOURCES.get(source, {}).get(prayer)

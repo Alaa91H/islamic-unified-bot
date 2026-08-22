@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import asyncio
 import contextlib
@@ -100,11 +99,12 @@ async def _heartbeat():
     health_path = Path(".health")
     while True:
         try:
-            health_path.write_text(str(time.time()))
+            await asyncio.to_thread(health_path.write_text, str(time.time()))
             await asyncio.sleep(60)
         except asyncio.CancelledError:
             break
-        except Exception:
+        except OSError:
+            logger.warning("تعذر تحديث ملف heartbeat", exc_info=True)
             await asyncio.sleep(60)
 
 
@@ -170,8 +170,8 @@ async def main():
 
         await asyncio.Event().wait()
 
-    except Exception as e:
-        logger.exception("❌ خطأ حرج: %s", e)
+    except Exception:
+        logger.exception("❌ خطأ حرج أثناء تشغيل البوت")
         raise
     finally:
         if monitor_task:
@@ -200,24 +200,9 @@ if __name__ == "__main__":
         pass
 
     try:
-        from pyrogram import Client
-
-        Client
-    except ImportError:
-        logger.error(
-            "❌ المكتبة Pyrogram غير مثبتة. قم بتشغيل: pip install -r requirements.txt"
-        )
-
-    try:
-        app_instance = Client("islamic_unified_bot")
-        del app_instance
-    except Exception:
-        pass
-
-    try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("🛑 تم الإيقاف بواسطة المستخدم")
-    except Exception as e:
-        logger.error("❌ خطأ حرج: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("❌ خطأ حرج أثناء إيقاف البوت")
         sys.exit(1)

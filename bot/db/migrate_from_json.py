@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """هجرة واحدة من user_settings.json القديم إلى SQLite.
 
 تُشغّل تلقائيًا عند أول إقلاع بعد التحديث (من main.py). تقرأ ملف JSON إن وُجد،

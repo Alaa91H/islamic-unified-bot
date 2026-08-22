@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """تسجيل كل المعالجات — إضافة ميزة = ملف + سطر هنا (Plugin Registry)."""
 
 import logging

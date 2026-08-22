@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """غلاف آمن حول PyTgCalls للقرآن والأذان.
 
 يوفّر:
@@ -15,7 +14,6 @@ import asyncio
 import logging
 import random
 from datetime import datetime
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +53,8 @@ class StreamManager:
         self.base_delay = base_delay
         self.default_duration_min = default_duration_min
         self._audio_quality_str = audio_quality
-        self._streams: Dict[int, dict] = {}
-        self._timers: Dict[int, asyncio.Task] = {}
+        self._streams: dict[int, dict] = {}
+        self._timers: dict[int, asyncio.Task] = {}
         self._started = False
         # دالة الاستيراد قابلة للحقن للاختبار (تفصل المنطق عن native binding)
         self._import_func = import_func or _import_pytgcalls
@@ -104,7 +102,7 @@ class StreamManager:
         url: str,
         title: str = "بث",
         loop: bool = False,
-        duration_min: Optional[int] = None,
+        duration_min: int | None = None,
         attempts: int = 0,
     ) -> bool:
         """يبدأ بثًا. يُرجع True عند النجاح، False عند استنفاد المحاولات."""
@@ -135,7 +133,7 @@ class StreamManager:
                 return False
             if attempts < self.max_reconnect:
                 delay = self.base_delay * (2**attempts) + random.uniform(0, 1)
-                logger.error(
+                logger.exception(
                     "❌ فشل البث (%d/%d): %s — إعادة بعد %.1fث",
                     attempts + 1,
                     self.max_reconnect,
@@ -146,7 +144,7 @@ class StreamManager:
                 return await self.play(
                     chat_id, url, title, loop, duration_min, attempts + 1
                 )
-            logger.error("❌ فشل البث نهائيًا بعد %d محاولة", self.max_reconnect)
+            logger.exception("❌ فشل البث نهائيًا بعد %d محاولة", self.max_reconnect)
             return False
 
         dur = duration_min if duration_min is not None else self.default_duration_min
@@ -197,11 +195,11 @@ class StreamManager:
             logger.info("✅ أُوقف البث في %s", chat_id)
         return existed
 
-    def active_streams(self) -> Dict[int, dict]:
+    def active_streams(self) -> dict[int, dict]:
         """لقطة من البثات النشطة."""
         return dict(self._streams)
 
-    def get_local_files(self, folder_path: str = None) -> Dict:
+    def get_local_files(self, folder_path: str | None = None) -> dict:
         """مسح ملفات صوتية محلية. دالة متزامنة (تُستدعى عبر executor)."""
         from pathlib import Path
 
@@ -219,5 +217,5 @@ class StreamManager:
                         "size": file.stat().st_size,
                     }
         except Exception as e:
-            logger.error("❌ خطأ في قراءة المجلد %s: %s", folder_path, e)
+            logger.exception("❌ خطأ في قراءة المجلد %s: %s", folder_path, e)
         return files

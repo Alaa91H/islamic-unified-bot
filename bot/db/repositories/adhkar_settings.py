@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
 
 from bot.db.connection import Database
 
@@ -18,15 +17,15 @@ class AdhkarSettings:
     evening_time: str = "18:00"
     friday_enabled: bool = False
     friday_time: str = "10:00"
-    last_adhkar_category: Optional[str] = None
-    last_sent_at: Optional[str] = None
+    last_adhkar_category: str | None = None
+    last_sent_at: str | None = None
 
 
 class AdhkarSettingsRepo:
     def __init__(self, db: Database):
         self._db = db
 
-    async def get(self, chat_id: int) -> Optional[AdhkarSettings]:
+    async def get(self, chat_id: int) -> AdhkarSettings | None:
         row = await self._db.fetchone(
             "SELECT * FROM adhkar_settings WHERE chat_id = ?", (chat_id,)
         )
@@ -70,14 +69,14 @@ class AdhkarSettingsRepo:
 
     async def update_partial(self, chat_id: int, **kwargs) -> None:
         sets = ", ".join(f"{k}=?" for k in kwargs)
-        vals = list(kwargs.values()) + [chat_id]
+        vals = [*list(kwargs.values()), chat_id]
         await self._db.execute(
             f"UPDATE adhkar_settings SET {sets}, updated_at=datetime('now') "
             f"WHERE chat_id=?",
             vals,
         )
 
-    async def list_all(self) -> List[AdhkarSettings]:
+    async def list_all(self) -> list[AdhkarSettings]:
         rows = await self._db.fetchall("SELECT * FROM adhkar_settings")
         return [self._row_to_model(r) for r in rows]
 

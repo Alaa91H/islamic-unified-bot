@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """حلقة جدولة الصلاة الخلفية — تستيقظ دوريًا وتطلق التنبيهات.
 
 دورة العمل:
@@ -20,7 +19,9 @@ import asyncio
 import contextlib
 import logging
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+
+from bot.time_utils import city_local_time, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +48,13 @@ def _within(t1: str, t2: str, tolerance: int = 1) -> bool:
 
 
 def _utc_now() -> datetime:
-    """وقت UTC بدون tzinfo ليتوافق مع حسابات الصلاة الحالية."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    """وقت UTC واعٍ بالمنطقة الزمنية لإبقاء واجهة الاختبارات المتوافقة."""
+    return utc_now()
 
 
-def _city_local_now(now_utc: datetime, coords: dict) -> datetime:
-    """حوّل UTC إلى وقت المدينة المحلي حسب tz وDST المخزنين في cities.json."""
-    tz_hours = float(coords.get("tz") or 0)
-    if coords.get("dst", False):
-        tz_hours += 1
-    return now_utc + timedelta(hours=tz_hours)
+def _city_local_now(now_utc: datetime, city: str, coords: dict) -> datetime:
+    """حوّل وقت UTC إلى الوقت المحلي الواعي وفق منطقة المدينة الحقيقية."""
+    return city_local_time(now_utc, city, coords)
 
 
 class PrayerScheduler:
@@ -171,7 +169,7 @@ class PrayerScheduler:
         coords = CityCoordinates.get_city_coords(city)
         if not coords:
             return None
-        local_now = _city_local_now(now, coords)
+        local_now = _city_local_now(now, city, coords)
         calc = PrayerTimeCalculator(
             latitude=coords["lat"],
             longitude=coords["lng"],
@@ -204,7 +202,7 @@ class PrayerScheduler:
         coords = CityCoordinates.get_city_coords(city)
         if not coords:
             return None
-        local_now = _city_local_now(now, coords)
+        local_now = _city_local_now(now, city, coords)
         calc = PrayerTimeCalculator(
             latitude=coords["lat"],
             longitude=coords["lng"],
@@ -237,7 +235,7 @@ class PrayerScheduler:
         date = info.get("date") or _utc_now().strftime("%Y-%m-%d")
         key = info.get("prelude_key", prayer)
 
-        if await self._sent_repo.already_sent(target_id, target_type, key, date):
+        if not await self._sent_repo.claim_delivery(target_id, target_type, key, date):
             return
 
         try:
@@ -250,6 +248,17 @@ class PrayerScheduler:
                     target_id, prayer, info.get("azan_source", "traditional")
                 )
             if ok:
-                await self._sent_repo.mark_sent(target_id, target_type, key, date)
-        except Exception:
+                await self._sent_repo.complete_delivery(
+                    target_id, target_type, key, date
+                )
+            else:
+                await self._sent_repo.fail_delivery(
+                    target_id,
+                    target_type,
+                    key,
+                    date,
+                    RuntimeError("notification gateway returned False"),
+                )
+        except Exception as exc:
+            await self._sent_repo.fail_delivery(target_id, target_type, key, date, exc)
             logger.exception("⚠️ فشل إرسال تنبيه %s لـ %s", prayer, target_id)

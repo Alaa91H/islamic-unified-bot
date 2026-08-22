@@ -23,7 +23,11 @@ async def test_database_creates_schema_and_is_idempotent(tmp_path):
     # idempotent: التشغيل ثانيةً لا يُخطئ ولا يكرّر
     await db.apply_migrations()
     versions = await db.fetchall("SELECT version FROM schema_version")
-    assert [r[0] for r in versions] == [1, 2, 3]
+    assert [r[0] for r in versions] == [1, 2, 3, 4]
+
+    columns = await db.fetchall("PRAGMA table_info(sent_notifications)")
+    column_names = {column[1] for column in columns}
+    assert {"status", "claimed_at", "attempts", "last_error"} <= column_names
 
     today = "2026-07-02"
     await db.execute(

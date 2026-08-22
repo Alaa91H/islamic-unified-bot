@@ -6,6 +6,7 @@ from bot.handlers.ui import markup_with_bottom_controls
 
 def city_selection_keyboard():
     from pyrogram.types import InlineKeyboardButton
+
     from bot.prayer.calculator import CityCoordinates
 
     cities = CityCoordinates.get_all_cities()
@@ -32,6 +33,7 @@ def city_selection_keyboard():
 
 def method_selection_keyboard(city: str):
     from pyrogram.types import InlineKeyboardButton
+
     from bot.prayer.calculator import CityCoordinates
 
     recommended = CityCoordinates.get_recommended_method(city)
@@ -126,8 +128,8 @@ def register(app, deps) -> None:
     @app.on_callback_query(filters.regex("^azan_method:"))
     @safe_handler()
     async def method_handler(client, cq):
-        from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
         from bot.db.repositories.user_settings import UserSettings
+        from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
 
         parts = cq.data.split(":")
         city, method = parts[1], parts[2]
@@ -154,6 +156,7 @@ def register(app, deps) -> None:
     @safe_handler()
     async def azan_times_cmd(client, message):
         from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
         from bot.prayer.calculator import CityCoordinates, PrayerTimeCalculator
 
         user_id = message.from_user.id

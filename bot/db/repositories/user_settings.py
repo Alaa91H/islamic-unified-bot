@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """مستودع إعدادات المستخدمين (المحادثات الخاصة)."""
 
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from bot.db.connection import Database
 
@@ -26,7 +24,7 @@ class UserSettings:
     notifications_on: bool = True
     prelude_on: bool = False
     prelude_minutes: int = 5
-    enabled_prayers: List[str] = field(default_factory=lambda: list(_DEFAULT_PRAYERS))
+    enabled_prayers: list[str] = field(default_factory=lambda: list(_DEFAULT_PRAYERS))
 
 
 class UserSettingsRepo:
@@ -35,7 +33,7 @@ class UserSettingsRepo:
     def __init__(self, db: Database):
         self._db = db
 
-    async def get(self, user_id: int) -> Optional[UserSettings]:
+    async def get(self, user_id: int) -> UserSettings | None:
         row = await self._db.fetchone(
             "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
         )
@@ -108,7 +106,7 @@ class UserSettingsRepo:
         )
         return True
 
-    async def list_with_notifications(self) -> List[UserSettings]:
+    async def list_with_notifications(self) -> list[UserSettings]:
         """كل المستخدمين الذين فعّلوا التنبيهات (تستخدمهم حلقة الجدولة)."""
         rows = await self._db.fetchall(
             "SELECT * FROM user_settings WHERE notifications_on = 1"

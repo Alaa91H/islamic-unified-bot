@@ -1,3 +1,40 @@
-[tool.isort]
-profile = "black"
-line_length = 88
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "islamic-unified-bot"
+version = "2.1.0"
+description = "Telegram bot for adhkar, Quran radio, and prayer notifications"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = ["bot/data/locales"]
+
+[tool.ruff.lint]
+# بوابة CI مركزة على أخطاء الصحة والاستيراد والترقيات الآمنة. تفحص قواعد
+# الأمان والاعتماديات بأدوات مخصصة (Bandit وpip-audit) في المهمة الأمنية.
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bot"]
+
+[tool.coverage.run]
+branch = true
+source = ["bot"]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = true
+skip_covered = false
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+include = ["bot", "main.py"]
+exclude = ["tests"]

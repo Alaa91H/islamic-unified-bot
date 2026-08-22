@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """إعدادات البوت المركزية — تُقرأ من متغيرات البيئة مرة واحدة عند الإقلاع.
 
 كل المكوّنات تتلقى نسخة من Settings بدل قراءة os.getenv مباشرة، مما يجعل
@@ -35,8 +34,10 @@ def _get_int(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
-    except ValueError:
-        raise ValueError(f"❌ {name} يجب أن يكون رقمًا صحيحًا، حصلنا على: {raw!r}")
+    except ValueError as exc:
+        raise ValueError(
+            f"❌ {name} يجب أن يكون رقمًا صحيحًا، حصلنا على: {raw!r}"
+        ) from exc
 
 
 def _get_bool(name: str, default: bool) -> bool:
