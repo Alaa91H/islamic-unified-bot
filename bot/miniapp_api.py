@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -12,7 +14,10 @@ from bot.miniapp_auth import (
     TelegramWebAppIdentity,
     validate_init_data,
 )
+from bot.observability import log_event
 from bot.prayer.calculator import CityCoordinates
+
+logger = logging.getLogger(__name__)
 
 
 class PreferencesInput(BaseModel):
@@ -39,6 +44,7 @@ def create_miniapp_api(settings, deps) -> FastAPI:
         x_telegram_init_data: str | None = Header(default=None),
     ) -> TelegramWebAppIdentity:
         if not x_telegram_init_data:
+            log_event(logger, "miniapp_auth_rejected", reason="missing_init_data")
             raise HTTPException(status_code=401, detail="Telegram initData is required")
         try:
             return validate_init_data(
@@ -47,6 +53,7 @@ def create_miniapp_api(settings, deps) -> FastAPI:
                 max_age_seconds=settings.miniapp_init_data_max_age,
             )
         except InitDataValidationError as exc:
+            log_event(logger, "miniapp_auth_rejected", reason="invalid_init_data")
             raise HTTPException(
                 status_code=401, detail="Invalid Telegram session"
             ) from exc
@@ -55,6 +62,17 @@ def create_miniapp_api(settings, deps) -> FastAPI:
     async def healthz():
         return {"status": "ok"}
 
+    @app.get("/readyz")
+    async def readyz():
+        """تحقق جاهزية داخلي بلا إفصاح عن تفاصيل البنية أو المستخدمين."""
+        try:
+            await deps.db.fetchone("SELECT 1")
+            delivery = await deps.sent_repo.delivery_metrics()
+        except Exception:
+            log_event(logger, "miniapp_readiness_failed", level=logging.ERROR)
+            raise HTTPException(status_code=503, detail="Service unavailable") from None
+        return {"status": "ready", "delivery": delivery}
+
     @app.get("/api/miniapp/preferences")
     async def get_preferences(
         x_telegram_init_data: str | None = Header(default=None),
@@ -62,7 +80,9 @@ def create_miniapp_api(settings, deps) -> FastAPI:
         identity = await identity_from_header(x_telegram_init_data)
         user = await deps.user_repo.get(identity.user_id)
         if user is None:
+            log_event(logger, "miniapp_preferences_read", configured=False)
             return {"configured": False}
+        log_event(logger, "miniapp_preferences_read", configured=True)
         return {
             "configured": True,
             "city": user.city,
@@ -77,6 +97,7 @@ def create_miniapp_api(settings, deps) -> FastAPI:
     ):
         identity = await identity_from_header(x_telegram_init_data)
         if CityCoordinates.get_city_coords(body.city) is None:
+            log_event(logger, "miniapp_preferences_rejected", reason="unsupported_city")
             raise HTTPException(status_code=422, detail="Unsupported city")
         existing = await deps.user_repo.get(identity.user_id)
         if existing is None:
@@ -98,6 +119,13 @@ def create_miniapp_api(settings, deps) -> FastAPI:
                 language=body.language,
                 notifications_on=body.notifications_on,
             )
+        log_event(
+            logger,
+            "miniapp_preferences_saved",
+            created=existing is None,
+            language=body.language,
+            notifications_enabled=body.notifications_on,
+        )
         return {"saved": True}
 
     return app

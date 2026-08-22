@@ -27,6 +27,8 @@ class _JsonFormatter(logging.Formatter):
                 "level": record.levelname,
                 "logger": record.name,
                 "msg": record.getMessage(),
+                "event": getattr(record, "event", None),
+                "context": getattr(record, "context", None),
             },
             ensure_ascii=False,
         )
