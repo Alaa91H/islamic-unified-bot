@@ -44,6 +44,12 @@ def test_validate_init_data_rejects_tampering_and_expiry():
 
 def test_preferences_api_requires_init_data_and_saves_verified_user():
     repo = SimpleNamespace(get=AsyncMock(return_value=None), upsert=AsyncMock())
+    db = SimpleNamespace(fetchone=AsyncMock(return_value=(1,)))
+    sent_repo = SimpleNamespace(
+        delivery_metrics=AsyncMock(
+            return_value={"processing": 1, "sent": 2, "failed": 0}
+        )
+    )
     settings = SimpleNamespace(
         bot_token="test-token",
         miniapp_init_data_max_age=3600,
@@ -52,9 +58,17 @@ def test_preferences_api_requires_init_data_and_saves_verified_user():
         default_asr_method="standard",
         default_timezone=3,
     )
-    app = create_miniapp_api(settings, SimpleNamespace(user_repo=repo))
+    app = create_miniapp_api(
+        settings, SimpleNamespace(user_repo=repo, db=db, sent_repo=sent_repo)
+    )
     client = TestClient(app)
 
+    readiness = client.get("/readyz")
+    assert readiness.status_code == 200
+    assert readiness.json() == {
+        "status": "ready",
+        "delivery": {"processing": 1, "sent": 2, "failed": 0},
+    }
     assert client.get("/api/miniapp/preferences").status_code == 401
     response = client.put(
         "/api/miniapp/preferences",
