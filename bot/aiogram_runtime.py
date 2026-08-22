@@ -22,6 +22,11 @@ def _home_keyboard():
             [InlineKeyboardButton(text="🤲 الأدعية", callback_data="dua:home")],
             [
                 InlineKeyboardButton(
+                    text="📅 التاريخ الهجري", callback_data="hijri:today"
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🤲 أسماء الله الحسنى", callback_data="names:page:0"
                 ),
             ],
@@ -313,6 +318,23 @@ def _dua_detail(category: str) -> str | None:
     return f"🤲 **{category}**\n\n_{info['dua']}_\n\n📚 {info['source']}"
 
 
+def _hijri_text(today) -> str:
+    """أنشئ نص التاريخ الهجري من التاريخ الحالي دون اعتماد على Telegram."""
+    from bot.data.duas import ARABIC_MONTHS
+    from bot.islamic_calendar import to_hijri
+
+    hijri = to_hijri(today)
+    if hijri is None:
+        return "❌ تعذر حساب التاريخ الهجري"
+    day, month, year = hijri
+    return (
+        "📅 **التاريخ الهجري**\n\n"
+        f"اليوم: {today.strftime('%A')}\n"
+        f"ميلادي: {today.strftime('%d %B %Y')}\n"
+        f"هجري: {day} {ARABIC_MONTHS[month]} {year} هـ\n"
+    )
+
+
 def create_main_menu_router():
     """أنشئ Router للأوامر النصية فقط دون اعتماد على Pyrogram أو MTProto."""
     from aiogram import F, Router
@@ -347,6 +369,15 @@ def create_main_menu_router():
             await message.edit_text(text, reply_markup=_dua_categories_keyboard())
         else:
             await message.answer(text, reply_markup=_dua_categories_keyboard())
+
+    async def show_hijri(message, *, edit: bool = False):
+        from bot.time_utils import utc_now
+
+        text = _hijri_text(utc_now().date())
+        if edit:
+            await message.edit_text(text, reply_markup=_home_keyboard())
+        else:
+            await message.answer(text, reply_markup=_home_keyboard())
 
     @router.message(CommandStart())
     async def start_command(message):
@@ -385,6 +416,10 @@ def create_main_menu_router():
     async def dua_command(message):
         await show_dua_landing(message)
 
+    @router.message(Command("hijri"))
+    async def hijri_command(message):
+        await show_hijri(message)
+
     @router.callback_query(F.data == "about")
     async def about_callback(callback):
         if callback.message:
@@ -403,6 +438,12 @@ def create_main_menu_router():
     async def quran_text_home_callback(callback):
         if callback.message:
             await show_quran_landing(callback.message, edit=True)
+        await callback.answer()
+
+    @router.callback_query(F.data == "hijri:today")
+    async def hijri_callback(callback):
+        if callback.message:
+            await show_hijri(callback.message, edit=True)
         await callback.answer()
 
     @router.callback_query(F.data.startswith("adhkar:"))

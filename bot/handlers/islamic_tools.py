@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from bot.decorators import safe_handler
+from bot.islamic_calendar import to_hijri
 from bot.time_utils import city_local_time, utc_now
 
 _usage_counts: dict = defaultdict(int)
@@ -47,20 +48,13 @@ def _track_usage(cmd: str) -> None:
         pass
 
 
-EPOCH = date(622, 7, 16)
-
 KAABA_LAT = 21.4225
 KAABA_LON = 39.8262
 
 
 def _to_hijri(d: date):
-    days = (d - EPOCH).days
-    if days < 0:
-        return None
-    year = days // 354 + 1
-    month = (days % 354) // 29
-    day = (days % 29) + 1
-    return day, month, year
+    """توافق مؤقت مع استيرادات المنطق السابقة داخل معالج Pyrogram."""
+    return to_hijri(d)
 
 
 def _qibla_direction(lat: float, lon: float) -> float:
