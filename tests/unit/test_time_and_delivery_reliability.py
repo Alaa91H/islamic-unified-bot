@@ -44,6 +44,13 @@ async def test_delivery_claim_is_atomic_and_retriable(tmp_path):
     await repo.fail_delivery(
         7, "user", "fajr", "2026-07-01", RuntimeError("gateway unavailable")
     )
+    assert await repo.claim_delivery(7, "user", "fajr", "2026-07-01") is False
+    await db.execute(
+        """UPDATE sent_notifications
+           SET next_retry_at=datetime('now', '-1 second')
+           WHERE target_id=? AND target_type=? AND prayer=? AND prayer_date=?""",
+        (7, "user", "fajr", "2026-07-01"),
+    )
     assert await repo.claim_delivery(7, "user", "fajr", "2026-07-01") is True
 
     await repo.complete_delivery(7, "user", "fajr", "2026-07-01")
