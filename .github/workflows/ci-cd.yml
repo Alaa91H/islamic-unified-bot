@@ -16,13 +16,13 @@ jobs:
   # ============================================================
   lint:
     name: 🔍 Lint & Code Quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -41,13 +41,13 @@ jobs:
   # ============================================================
   security:
     name: 🔒 Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -69,13 +69,13 @@ jobs:
   # ============================================================
   test:
     name: 🧪 Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -112,14 +112,14 @@ jobs:
   # ============================================================
   smoke-test:
     name: 💨 Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [lint, security, test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -226,14 +226,14 @@ jobs:
   # ============================================================
   build:
     name: 📦 Build Package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [smoke-test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -287,7 +287,7 @@ jobs:
   # ============================================================
   deploy:
     name: 🚀 Deploy to Server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
@@ -295,7 +295,7 @@ jobs:
       url: https://github.com/Alaa91H/islamic-unified-bot
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate secrets
         id: validate-secrets
@@ -382,7 +382,7 @@ jobs:
       - name: Notify on success
         if: success() && steps.validate-secrets.outputs.skip != 'true'
         continue-on-error: true
-        uses: appleboy/telegram-action@v1.0.1
+        uses: appleboy/telegram-action@v1.1.1
         with:
           to: ${{ secrets.OWNER_ID }}
           token: ${{ secrets.BOT_TOKEN }}
@@ -396,7 +396,7 @@ jobs:
       - name: Notify on failure
         if: failure() && steps.validate-secrets.outputs.skip != 'true'
         continue-on-error: true
-        uses: appleboy/telegram-action@v1.0.1
+        uses: appleboy/telegram-action@v1.1.1
         with:
           to: ${{ secrets.OWNER_ID }}
           token: ${{ secrets.BOT_TOKEN }}
