@@ -16,7 +16,7 @@ jobs:
   # ============================================================
   lint:
     name: 🔍 Lint & Code Quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -41,7 +41,7 @@ jobs:
   # ============================================================
   security:
     name: 🔒 Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -69,7 +69,7 @@ jobs:
   # ============================================================
   test:
     name: 🧪 Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -112,7 +112,7 @@ jobs:
   # ============================================================
   smoke-test:
     name: 💨 Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [lint, security, test]
     steps:
       - name: Checkout code
@@ -226,7 +226,7 @@ jobs:
   # ============================================================
   build:
     name: 📦 Build Package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [smoke-test]
     steps:
       - name: Checkout code
@@ -287,7 +287,7 @@ jobs:
   # ============================================================
   deploy:
     name: 🚀 Deploy to Server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
